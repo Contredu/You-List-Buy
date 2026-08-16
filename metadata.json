@@ -1,0 +1,6 @@
+{
+  "name": "Control de Stock y Compras Familiar",
+  "description": "Gestión de stock doméstico, listas mensuales compartidas, control de presupuesto, histórico de precios y reportes de gastos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
