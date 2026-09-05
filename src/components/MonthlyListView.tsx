@@ -433,7 +433,7 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
         </div>
 
         {/* Category selector */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             id="filter-category-select"
             value={selectedCategory}
@@ -523,12 +523,12 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                     : "border-stone-200 hover:border-stone-300 shadow-xs"
                 }`}
               >
-                <div className="flex items-start sm:items-center justify-between gap-3">
-                  {/* Left: Checkbox + Product Details */}
-                  <div className="flex items-start sm:items-center gap-3 flex-1 min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* Top (Mobile) / Left (Desktop): Checkbox + Product Details + Mobile Delete */}
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                     <button
                       onClick={() => handleTogglePurchased(item)}
-                      className={`mt-0.5 sm:mt-0 p-1 rounded-lg transition-colors cursor-pointer ${
+                      className={`mt-0.5 sm:mt-0 p-1 rounded-lg transition-colors cursor-pointer shrink-0 ${
                         item.purchased
                           ? "text-emerald-600 hover:text-emerald-700"
                           : "text-stone-300 hover:text-stone-500"
@@ -547,9 +547,9 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span
-                          className={`font-semibold text-sm sm:text-base truncate ${
+                          className={`font-bold text-sm sm:text-base leading-snug break-words ${
                             item.purchased
                               ? "line-through text-stone-500"
                               : "text-stone-900"
@@ -560,14 +560,14 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
 
                         {/* Category Badge */}
                         <span
-                          className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${catColors.bg} ${catColors.text} ${catColors.border}`}
+                          className={`text-[10px] font-medium px-2 py-0.5 rounded-md border whitespace-nowrap ${catColors.bg} ${catColors.text} ${catColors.border}`}
                         >
                           {item.category}
                         </span>
 
                         {/* Priority Badge if Alta */}
                         {item.priority === "alta" && (
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 whitespace-nowrap">
                             Urgente
                           </span>
                         )}
@@ -575,7 +575,7 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                         {/* Current home stock indicator */}
                         {baseProd && (
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md whitespace-nowrap ${
                               baseProd.currentStock <= baseProd.minStock
                                 ? "bg-amber-50 text-amber-700 font-medium"
                                 : "text-stone-400"
@@ -587,7 +587,7 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                       </div>
 
                       {/* Family members breakdown who requested this item */}
-                      <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs text-stone-500">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-stone-500">
                         <div className="flex items-center gap-1">
                           <Users className="w-3 h-3 text-stone-400" />
                           <span className="text-[11px] font-medium text-stone-600">
@@ -614,29 +614,41 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                         ))}
                       </div>
                     </div>
+
+                    {/* Mobile-only Delete Button */}
+                    <button
+                      onClick={() => handleRemoveItem(item.id)}
+                      className="sm:hidden p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0 -mr-1 -mt-1"
+                      title="Eliminar de la lista mensual"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  {/* Right: Quantity controls + Price subtotal + Delete */}
-                  <div className="flex items-center gap-3 sm:gap-4 shrink-0">
+                  {/* Bottom (Mobile) / Right (Desktop): Quantity controls + Price subtotal + Desktop Delete */}
+                  <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 pt-2 sm:pt-0 border-t border-stone-100 sm:border-t-0 shrink-0">
                     {/* Quantity Stepper */}
-                    <div className="flex items-center border border-stone-200 rounded-lg bg-stone-50 p-0.5">
-                      <button
-                        onClick={() => handleAdjustQuantity(item, -1)}
-                        className="w-7 h-7 flex items-center justify-center text-stone-600 hover:bg-white hover:text-stone-900 rounded-md transition-colors font-bold text-sm cursor-pointer"
-                        title="Restar 1"
-                      >
-                        -
-                      </button>
-                      <span className="w-8 text-center text-xs sm:text-sm font-bold text-stone-900">
-                        {item.quantity}
-                      </span>
-                      <button
-                        onClick={() => handleAdjustQuantity(item, 1)}
-                        className="w-7 h-7 flex items-center justify-center text-stone-600 hover:bg-white hover:text-stone-900 rounded-md transition-colors font-bold text-sm cursor-pointer"
-                        title="Sumar 1"
-                      >
-                        +
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <span className="sm:hidden text-xs text-stone-500 font-medium">Cantidad:</span>
+                      <div className="flex items-center border border-stone-200 rounded-lg bg-stone-50 p-0.5">
+                        <button
+                          onClick={() => handleAdjustQuantity(item, -1)}
+                          className="w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center text-stone-600 hover:bg-white hover:text-stone-900 rounded-md transition-colors font-bold text-sm cursor-pointer"
+                          title="Restar 1"
+                        >
+                          -
+                        </button>
+                        <span className="w-8 text-center text-xs sm:text-sm font-bold text-stone-900">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() => handleAdjustQuantity(item, 1)}
+                          className="w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center text-stone-600 hover:bg-white hover:text-stone-900 rounded-md transition-colors font-bold text-sm cursor-pointer"
+                          title="Sumar 1"
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
 
                     {/* Price calculation */}
@@ -680,10 +692,10 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Delete button */}
+                    {/* Desktop delete button */}
                     <button
                       onClick={() => handleRemoveItem(item.id)}
-                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                      className="hidden sm:block p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                       title="Eliminar de la lista mensual"
                     >
                       <Trash2 className="w-4 h-4" />

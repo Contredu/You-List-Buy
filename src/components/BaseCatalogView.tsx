@@ -279,7 +279,7 @@ export const BaseCatalogView: React.FC<BaseCatalogViewProps> = ({
                   </div>
 
                   {/* Product Title & Brand */}
-                  <h3 className="font-bold text-stone-900 text-sm sm:text-base leading-snug">
+                  <h3 className="font-bold text-stone-900 text-sm sm:text-base leading-snug break-words">
                     {prod.name}
                   </h3>
                   {prod.brand && (
