@@ -3,35 +3,27 @@ import { BaseProduct, FamilyMember, MonthlyList, NotificationItem } from "../typ
 export const INITIAL_MEMBERS: FamilyMember[] = [
   {
     id: "mem_1",
-    name: "Carmen (Mamá)",
-    role: "Madre",
+    name: "Juana Ysabel",
+    role: "Familiar",
     avatar: "👩‍🍳",
     color: "#ec4899", // pink
-    email: "carmen@familia.es",
+    email: "diazsaenzj@yahoo.com",
   },
   {
     id: "mem_2",
-    name: "David (Papá)",
-    role: "Padre",
-    avatar: "👨‍💼",
+    name: "Noelia Isabel",
+    role: "Familiar",
+    avatar: "👧",
     color: "#3b82f6", // blue
-    email: "david@familia.es",
+    email: "noejua9255@gmail.com",
   },
   {
     id: "mem_3",
-    name: "Lucía (Hija)",
-    role: "Hija",
-    avatar: "👧",
+    name: "Carlos Enrique",
+    role: "Administrador",
+    avatar: "👨‍💼",
     color: "#8b5cf6", // purple
-    email: "lucia@familia.es",
-  },
-  {
-    id: "mem_4",
-    name: "Mateo (Hijo)",
-    role: "Hijo",
-    avatar: "🧒",
-    color: "#10b981", // green
-    email: "mateo@familia.es",
+    email: "carlos.contredu@gmail.com",
   },
 ];
 

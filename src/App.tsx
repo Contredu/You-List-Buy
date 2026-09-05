@@ -27,6 +27,33 @@ import {
   NotificationItem,
   PriceRecord,
 } from "./types";
+import { auth, googleProvider, testFirestoreConnection } from "./lib/firebase";
+import {
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+  User,
+} from "firebase/auth";
+import {
+  seedInitialDataIfEmpty,
+  subscribeToFamilyMembers,
+  subscribeToBaseProducts,
+  subscribeToMonthlyLists,
+  subscribeToMonthlyListItems,
+  subscribeToNotifications,
+  saveBaseProductToDb,
+  deleteBaseProductFromDb,
+  saveMonthlyListToDb,
+  saveMonthlyListItemToDb,
+  deleteMonthlyListItemFromDb,
+  saveNotificationToDb,
+  markNotificationReadInDb,
+} from "./services/firestoreService";
+import {
+  INITIAL_MEMBERS,
+  INITIAL_BASE_PRODUCTS,
+  INITIAL_MONTHLY_LISTS,
+} from "./data/initialData";
 import { Navbar } from "./components/Navbar";
 import { MonthlyListView } from "./components/MonthlyListView";
 import { BaseCatalogView } from "./components/BaseCatalogView";
@@ -54,6 +81,11 @@ export default function App() {
   const [activeMonthKey, setActiveMonthKey] = useState<string>(loadActiveMonthKey);
   const [notifications, setNotifications] = useState<NotificationItem[]>(loadNotifications);
 
+  // Firebase Realtime State
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
+
   // Modals
   const [isAddToListOpen, setIsAddToListOpen] = useState(false);
   const [preSelectedProductForAdd, setPreSelectedProductForAdd] = useState<BaseProduct | null>(null);
@@ -65,6 +97,123 @@ export default function App() {
   const [isSupermarketModeOpen, setIsSupermarketModeOpen] = useState(false);
   const [isMobileInstallOpen, setIsMobileInstallOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Firebase Auth State Listener & DB Seeder
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setAuthUser(user);
+      if (user) {
+        setIsSyncing(true);
+        try {
+          await testFirestoreConnection();
+          // Seed DB if it's the first time
+          await seedInitialDataIfEmpty(
+            INITIAL_MEMBERS,
+            INITIAL_BASE_PRODUCTS,
+            INITIAL_MONTHLY_LISTS
+          );
+          setIsCloudConnected(true);
+          showToast(`Sincronización en la Nube activa como ${user.displayName || user.email}`);
+        } catch (err) {
+          console.error("Error al conectar Firestore:", err);
+        } finally {
+          setIsSyncing(false);
+        }
+      } else {
+        setIsCloudConnected(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Realtime Subscriptions with Firestore when authenticated
+  useEffect(() => {
+    if (!authUser) return;
+
+    const unsubMembers = subscribeToFamilyMembers((members) => {
+      if (members && members.length > 0) {
+        setFamilyMembers(members);
+        // Automatically switch active member to match signed-in user's email if possible
+        if (authUser.email) {
+          const matched = members.find(
+            (m) => m.email.toLowerCase() === authUser.email?.toLowerCase()
+          );
+          if (matched) {
+            setCurrentMember(matched);
+          }
+        }
+      }
+    });
+
+    const unsubProducts = subscribeToBaseProducts((products) => {
+      if (products && products.length > 0) {
+        setBaseProducts(products);
+      }
+    });
+
+    const unsubLists = subscribeToMonthlyLists((lists) => {
+      if (lists && lists.length > 0) {
+        setMonthlyLists((prevLists) => {
+          return lists.map((newList) => {
+            const existing = prevLists.find((p) => p.id === newList.id);
+            return {
+              ...newList,
+              items: existing && existing.items.length > 0 ? existing.items : [],
+            };
+          });
+        });
+      }
+    });
+
+    const unsubNotifs = subscribeToNotifications((notifs) => {
+      setNotifications(notifs);
+    });
+
+    return () => {
+      unsubMembers();
+      unsubProducts();
+      unsubLists();
+      unsubNotifs();
+    };
+  }, [authUser]);
+
+  // Realtime Subcollection subscription for items of the active monthly list
+  useEffect(() => {
+    if (!authUser) return;
+    const currentList = monthlyLists.find((l) => l.monthKey === activeMonthKey);
+    if (!currentList) return;
+
+    const unsubItems = subscribeToMonthlyListItems(currentList.id, (items) => {
+      setMonthlyLists((prev) =>
+        prev.map((l) => (l.id === currentList.id ? { ...l, items } : l))
+      );
+    });
+
+    return () => unsubItems();
+  }, [authUser, activeMonthKey]);
+
+  // Auth Action Handlers
+  const handleSignInWithGoogle = async () => {
+    try {
+      setIsSyncing(true);
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: any) {
+      console.error("Error signing in with Google:", error);
+      showToast("Error al conectar cuenta Google");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      showToast("Sesión cerrada. Modo local activado.");
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
 
   // Sync to localStorage
   useEffect(() => {
@@ -206,6 +355,10 @@ export default function App() {
       severity: "info",
     };
     setNotifications((prev) => [newNotif, ...prev]);
+
+    if (authUser) {
+      saveNotificationToDb(newNotif);
+    }
   };
 
   // Handler: Update monthly list
@@ -213,6 +366,12 @@ export default function App() {
     setMonthlyLists((prev) =>
       prev.map((l) => (l.id === updatedList.id ? updatedList : l))
     );
+    if (authUser) {
+      saveMonthlyListToDb(updatedList);
+      updatedList.items.forEach((item) => {
+        saveMonthlyListItemToDb(updatedList.id, item);
+      });
+    }
   };
 
   // Handler: Save or create base product
@@ -227,6 +386,9 @@ export default function App() {
       setBaseProducts((prev) => [savedProduct, ...prev]);
       showToast(`Producto "${savedProduct.name}" creado en catálogo`);
     }
+    if (authUser) {
+      saveBaseProductToDb(savedProduct);
+    }
   };
 
   // Handler: Delete base product
@@ -235,10 +397,14 @@ export default function App() {
     if (!prod) return;
     setBaseProducts((prev) => prev.filter((p) => p.id !== productId));
     showToast(`Producto "${prod.name}" eliminado del catálogo base`);
+    if (authUser) {
+      deleteBaseProductFromDb(productId);
+    }
   };
 
   // Handler: Quick update stock in house
   const handleQuickUpdateStock = (productId: string, newStock: number) => {
+    let updatedProd: BaseProduct | null = null;
     setBaseProducts((prev) =>
       prev.map((p) => {
         if (p.id === productId) {
@@ -247,6 +413,7 @@ export default function App() {
             currentStock: newStock,
             lastUpdated: new Date().toISOString().split("T")[0],
           };
+          updatedProd = updated;
 
           // If reached 0 or <= minStock, trigger notification
           if (newStock <= p.minStock && p.currentStock > p.minStock) {
@@ -261,6 +428,9 @@ export default function App() {
               severity: newStock === 0 ? "danger" : "warning",
             };
             setNotifications((prevNotifs) => [notif, ...prevNotifs]);
+            if (authUser) {
+              saveNotificationToDb(notif);
+            }
           }
 
           return updated;
@@ -268,6 +438,9 @@ export default function App() {
         return p;
       })
     );
+    if (authUser && updatedProd) {
+      saveBaseProductToDb(updatedProd);
+    }
   };
 
   // Handler: Add Price Record
@@ -438,6 +611,12 @@ export default function App() {
     setActiveMonthKey(monthKey);
     setCurrentTab("list");
     showToast(`Lista de ${title} creada con presupuesto de ${budget} €`);
+    if (authUser) {
+      saveMonthlyListToDb(newList);
+      initialItems.forEach((item) => {
+        saveMonthlyListItemToDb(newList.id, item);
+      });
+    }
   };
 
   return (
@@ -462,7 +641,33 @@ export default function App() {
         onOpenSupermarketMode={() => setIsSupermarketModeOpen(true)}
         onOpenMobileInstallModal={() => setIsMobileInstallOpen(true)}
         unreadCount={unreadNotificationsCount}
+        authUser={authUser}
+        onSignInWithGoogle={handleSignInWithGoogle}
+        onSignOut={handleSignOut}
+        isSyncing={isSyncing}
       />
+
+      {/* Cloud Sync Announcement Banner if not authenticated */}
+      {!authUser && (
+        <div className="bg-amber-50 border-b border-amber-200/70 px-4 py-2 sm:px-6">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs sm:text-sm text-amber-900">
+            <div className="flex items-center gap-2 text-center sm:text-left">
+              <span className="text-base">☁️</span>
+              <span>
+                <strong>Base de datos Firestore activa:</strong> Conecta tu cuenta de Google para sincronizar en tiempo real las compras con Juana, Noelia y Carlos entre todos vuestros dispositivos móviles.
+              </span>
+            </div>
+            <button
+              id="banner-signin-google"
+              onClick={handleSignInWithGoogle}
+              disabled={isSyncing}
+              className="shrink-0 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-xs"
+            >
+              <span>{isSyncing ? "Conectando..." : "Conectar Nube con Google"}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">

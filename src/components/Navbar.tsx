@@ -13,9 +13,13 @@ import {
   AlertTriangle,
   Store,
   Smartphone,
+  Cloud,
+  LogOut,
+  LogIn,
 } from "lucide-react";
 import { FamilyMember, MonthlyList, NotificationItem } from "../types";
 import { formatCurrency, formatMonthTitle } from "../utils/helpers";
+import { User } from "firebase/auth";
 
 interface NavbarProps {
   currentTab: "list" | "catalog" | "ai" | "reports" | "notifications";
@@ -31,6 +35,10 @@ interface NavbarProps {
   onOpenSupermarketMode: () => void;
   onOpenMobileInstallModal: () => void;
   unreadCount: number;
+  authUser: User | null;
+  onSignInWithGoogle: () => void;
+  onSignOut: () => void;
+  isSyncing: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,8 +54,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSupermarketMode,
   onOpenMobileInstallModal,
   unreadCount,
+  authUser,
+  onSignInWithGoogle,
+  onSignOut,
+  isSyncing,
 }) => {
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
+  const [showCloudDropdown, setShowCloudDropdown] = useState(false);
   const [showMonthDropdown, setShowMonthDropdown] = useState(false);
 
   const activeList = monthlyLists.find((l) => l.monthKey === activeMonthKey);
@@ -160,6 +173,79 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Store className="w-3.5 h-3.5" />
               <span>Modo Super</span>
             </button>
+
+            {/* Cloud Realtime Sync / Google Login Widget */}
+            <div className="relative">
+              {authUser ? (
+                <button
+                  id="cloud-sync-status-button"
+                  onClick={() => {
+                    setShowCloudDropdown(!showCloudDropdown);
+                    setShowMemberDropdown(false);
+                    setShowMonthDropdown(false);
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-colors cursor-pointer"
+                  title="Sincronización en tiempo real activa con Firestore"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden xl:inline">Nube Activa</span>
+                </button>
+              ) : (
+                <button
+                  id="cloud-signin-button"
+                  onClick={onSignInWithGoogle}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold transition-colors cursor-pointer"
+                  title="Conectar con Google para sincronizar en tiempo real entre móviles"
+                >
+                  <Cloud className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">Conectar Nube</span>
+                  <LogIn className="w-3 h-3 text-amber-700" />
+                </button>
+              )}
+
+              {showCloudDropdown && authUser && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-stone-200 p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-stone-100">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+                      {authUser.photoURL ? (
+                        <img
+                          src={authUser.photoURL}
+                          alt={authUser.displayName || "Google"}
+                          className="w-8 h-8 rounded-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        (authUser.email?.[0] || "U").toUpperCase()
+                      )}
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-xs font-semibold text-stone-900 truncate">
+                        {authUser.displayName || "Usuario Google"}
+                      </p>
+                      <p className="text-[10px] text-stone-500 truncate">
+                        {authUser.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-2 mb-2.5 text-[11px] text-emerald-800 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Sincronizando despensa con Firestore en tiempo real.</span>
+                  </div>
+                  <button
+                    id="cloud-signout-button"
+                    onClick={() => {
+                      onSignOut();
+                      setShowCloudDropdown(false);
+                    }}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Cerrar sesión en este dispositivo</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Mobile / PWA App Guide Button */}
             <button

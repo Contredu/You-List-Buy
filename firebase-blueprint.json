@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "FamilyMember": {
+      "title": "FamilyMember",
+      "description": "A registered family member in the household",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "maxLength": 50 },
+        "avatar": { "type": "string", "maxLength": 10 },
+        "color": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 150 }
+      },
+      "required": ["id", "name", "role", "email"]
+    },
+    "BaseProduct": {
+      "title": "BaseProduct",
+      "description": "A base pantry product with inventory levels and pricing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 60 },
+        "unit": { "type": "string", "maxLength": 20 },
+        "currentStock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "idealStock": { "type": "number" },
+        "currentPrice": { "type": "number" },
+        "brand": { "type": "string", "maxLength": 80 },
+        "favoriteStore": { "type": "string", "maxLength": 80 },
+        "notes": { "type": "string", "maxLength": 250 },
+        "lastUpdated": { "type": "string", "maxLength": 30 },
+        "priceHistory": { "type": "array" }
+      },
+      "required": ["id", "name", "category", "unit", "currentStock", "minStock", "idealStock", "currentPrice"]
+    },
+    "MonthlyList": {
+      "title": "MonthlyList",
+      "description": "A monthly shopping list container with target budget and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "monthKey": { "type": "string", "maxLength": 20 },
+        "title": { "type": "string", "maxLength": 100 },
+        "budget": { "type": "number" },
+        "status": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "monthKey", "title", "budget", "status"]
+    },
+    "MonthlyListItem": {
+      "title": "MonthlyListItem",
+      "description": "An item inside a monthly shopping list",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "productId": { "type": "string", "maxLength": 128 },
+        "productName": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 60 },
+        "unit": { "type": "string", "maxLength": 20 },
+        "estimatedPrice": { "type": "number" },
+        "actualPrice": { "type": "number" },
+        "quantity": { "type": "number" },
+        "purchased": { "type": "boolean" },
+        "purchasedBy": { "type": "string", "maxLength": 100 },
+        "purchasedAt": { "type": "string", "maxLength": 40 },
+        "priority": { "type": "string", "maxLength": 20 },
+        "notes": { "type": "string", "maxLength": 250 },
+        "addedBy": { "type": "array" }
+      },
+      "required": ["id", "productId", "productName", "category", "unit", "estimatedPrice", "quantity", "purchased"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "An automated notification or alert for family stock activity",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "maxLength": 40 },
+        "title": { "type": "string", "maxLength": 120 },
+        "message": { "type": "string", "maxLength": 300 },
+        "timestamp": { "type": "string", "maxLength": 40 },
+        "read": { "type": "boolean" },
+        "relatedProductId": { "type": "string", "maxLength": 128 },
+        "relatedMonthKey": { "type": "string", "maxLength": 30 },
+        "severity": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["id", "type", "title", "message", "timestamp", "read", "severity"]
+    }
+  },
+  "firestore": {
+    "/family_members/{memberId}": {
+      "schema": "FamilyMember",
+      "description": "Family members participating in household shopping"
+    },
+    "/base_products/{productId}": {
+      "schema": "BaseProduct",
+      "description": "Base inventory catalog of domestic household products"
+    },
+    "/monthly_lists/{listId}": {
+      "schema": "MonthlyList",
+      "description": "Monthly shopping lists with budgets and execution status"
+    },
+    "/monthly_lists/{listId}/items/{itemId}": {
+      "schema": "MonthlyListItem",
+      "description": "Subcollection of items belonging to a monthly list"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "NotificationItem",
+      "description": "Notifications feed for stock alerts and item updates"
+    }
+  }
+}

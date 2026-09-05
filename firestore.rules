@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation blueprints
+    function isValidFamilyMember(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.role is string && data.role.size() <= 50 &&
+             data.email is string && data.email.size() <= 150;
+    }
+
+    function isValidBaseProduct(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             data.category is string && data.category.size() <= 60 &&
+             data.unit is string && data.unit.size() <= 20 &&
+             data.currentStock is number && data.currentStock >= 0 &&
+             data.minStock is number && data.minStock >= 0 &&
+             data.idealStock is number && data.idealStock >= 0 &&
+             data.currentPrice is number && data.currentPrice >= 0;
+    }
+
+    function isValidMonthlyList(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.monthKey is string && data.monthKey.size() <= 20 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 100 &&
+             data.budget is number && data.budget >= 0 &&
+             data.status is string && data.status.size() <= 30;
+    }
+
+    function isValidMonthlyListItem(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.productId is string && data.productId.size() <= 128 &&
+             data.productName is string && data.productName.size() > 0 && data.productName.size() <= 120 &&
+             data.category is string && data.category.size() <= 60 &&
+             data.unit is string && data.unit.size() <= 20 &&
+             data.estimatedPrice is number && data.estimatedPrice >= 0 &&
+             data.quantity is number && data.quantity > 0 &&
+             data.purchased is bool;
+    }
+
+    function isValidNotification(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.type is string && data.type.size() <= 40 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 120 &&
+             data.message is string && data.message.size() <= 300 &&
+             data.read is bool &&
+             data.severity is string && data.severity.size() <= 20;
+    }
+
+    // Family Members Collection
+    match /family_members/{memberId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(memberId) && isValidFamilyMember(incoming()) && incoming().id == memberId;
+      allow update: if isSignedIn() && isValidId(memberId) && isValidFamilyMember(incoming()) && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(memberId);
+    }
+
+    // Base Products Catalog
+    match /base_products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(productId) && isValidBaseProduct(incoming()) && incoming().id == productId;
+      allow update: if isSignedIn() && isValidId(productId) && isValidBaseProduct(incoming()) && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(productId);
+    }
+
+    // Monthly Shopping Lists
+    match /monthly_lists/{listId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(listId) && isValidMonthlyList(incoming()) && incoming().id == listId;
+      allow update: if isSignedIn() && isValidId(listId) && isValidMonthlyList(incoming()) && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(listId);
+
+      // Subcollection: List Items
+      match /items/{itemId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(itemId) && isValidMonthlyListItem(incoming()) && incoming().id == itemId;
+        allow update: if isSignedIn() && isValidId(itemId) && isValidMonthlyListItem(incoming()) && incoming().id == existing().id;
+        allow delete: if isSignedIn() && isValidId(itemId);
+      }
+    }
+
+    // Automated Notifications
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == notificationId;
+      allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == existing().id;
+      allow delete: if isSignedIn() && isValidId(notificationId);
+    }
+  }
+}
