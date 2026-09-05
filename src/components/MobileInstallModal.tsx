@@ -26,6 +26,16 @@ export const MobileInstallModal: React.FC<MobileInstallModalProps> = ({
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     // Detect iOS
     const isIOS =
       /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -67,8 +77,15 @@ export const MobileInstallModal: React.FC<MobileInstallModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop layer */}
+      <div
+        id="mobile-install-backdrop"
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity cursor-pointer"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/70">
           <div className="flex items-center gap-2.5">

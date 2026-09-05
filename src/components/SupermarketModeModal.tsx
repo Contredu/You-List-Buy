@@ -33,6 +33,16 @@ export const SupermarketModeModal: React.FC<SupermarketModeModalProps> = ({
 }) => {
   const [showOnlyPending, setShowOnlyPending] = useState(true);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   if (!isOpen) return null;
 
   const financials = calculateListFinancials(activeList);

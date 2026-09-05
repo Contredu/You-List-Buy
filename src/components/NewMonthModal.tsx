@@ -25,6 +25,16 @@ export const NewMonthModal: React.FC<NewMonthModalProps> = ({
   const [budget, setBudget] = useState("400");
   const [autoImportLowStock, setAutoImportLowStock] = useState(true);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   if (!isOpen) return null;
 
   const handleMonthKeyChange = (key: string) => {
@@ -46,8 +56,15 @@ export const NewMonthModal: React.FC<NewMonthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Click-outside backdrop */}
+      <div
+        id="new-month-backdrop"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity cursor-pointer"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-md w-full overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
           <div className="flex items-center gap-2">

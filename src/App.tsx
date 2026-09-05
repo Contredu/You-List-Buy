@@ -299,19 +299,20 @@ export default function App() {
   }, [authUser]);
 
   // Realtime Subcollection subscription for items of the active monthly list
-  useEffect(() => {
-    if (!authUser) return;
-    const currentList = monthlyLists.find((l) => l.monthKey === activeMonthKey);
-    if (!currentList) return;
+  const currentActiveList = monthlyLists.find((l) => l.monthKey === activeMonthKey);
+  const activeListDocId = currentActiveList?.id;
 
-    const unsubItems = subscribeToMonthlyListItems(currentList.id, (items) => {
+  useEffect(() => {
+    if (!authUser || !activeListDocId) return;
+
+    const unsubItems = subscribeToMonthlyListItems(activeListDocId, (items) => {
       setMonthlyLists((prev) =>
-        prev.map((l) => (l.id === currentList.id ? { ...l, items } : l))
+        prev.map((l) => (l.id === activeListDocId ? { ...l, items } : l))
       );
     });
 
     return () => unsubItems();
-  }, [authUser, activeMonthKey]);
+  }, [authUser, activeListDocId]);
 
   // Auth Action Handlers
   const handleSignInWithGoogle = async () => {
@@ -485,6 +486,15 @@ export default function App() {
 
   // Handler: Update monthly list
   const handleUpdateMonthlyList = (updatedList: MonthlyList) => {
+    const prevList = monthlyLists.find((l) => l.id === updatedList.id);
+    const removedItemIds = prevList
+      ? prevList.items
+          .filter(
+            (prevItem) => !updatedList.items.some((newItem) => newItem.id === prevItem.id)
+          )
+          .map((i) => i.id)
+      : [];
+
     setMonthlyLists((prev) =>
       prev.map((l) => (l.id === updatedList.id ? updatedList : l))
     );
@@ -492,6 +502,9 @@ export default function App() {
       saveMonthlyListToDb(updatedList);
       updatedList.items.forEach((item) => {
         saveMonthlyListItemToDb(updatedList.id, item);
+      });
+      removedItemIds.forEach((removedId) => {
+        deleteMonthlyListItemFromDb(updatedList.id, removedId);
       });
     }
   };

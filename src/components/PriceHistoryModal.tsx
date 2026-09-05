@@ -41,6 +41,16 @@ export const PriceHistoryModal: React.FC<PriceHistoryModalProps> = ({
   const [newNotes, setNewNotes] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   if (!isOpen || !product) return null;
 
   const trend = calculatePriceTrend(product);
@@ -76,8 +86,15 @@ export const PriceHistoryModal: React.FC<PriceHistoryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Click-outside backdrop */}
+      <div
+        id="price-history-backdrop"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity cursor-pointer"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
           <div className="flex items-center gap-2.5">

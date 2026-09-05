@@ -41,6 +41,16 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   ];
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
     if (productToEdit) {
       setName(productToEdit.name);
       setCategory(productToEdit.category);
@@ -121,8 +131,15 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Click-outside backdrop layer */}
+      <div
+        id="add-edit-product-backdrop"
+        className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity cursor-pointer"
+        onClick={onClose}
+      />
+
+      <div className="relative z-10 bg-white rounded-3xl border border-stone-200 shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
           <div className="flex items-center gap-2">
