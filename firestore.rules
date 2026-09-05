@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
     }
 
     function incoming() {
@@ -71,6 +71,28 @@ service cloud.firestore {
              data.severity is string && data.severity.size() <= 20;
     }
 
+    function isValidHousehold(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.inviteCode is string && data.inviteCode.size() <= 30 &&
+             data.ownerUid is string && data.ownerUid.size() <= 128;
+    }
+
+    // Households Collection
+    match /households/{householdId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(householdId) && isValidHousehold(incoming());
+      allow update: if isSignedIn() && isValidId(householdId) && isValidHousehold(incoming());
+      allow delete: if isSignedIn() && isValidId(householdId);
+    }
+
+    // Invite Code Registry
+    match /invite_codes/{code} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(code);
+      allow delete: if isSignedIn() && isValidId(code);
+    }
+
     // Family Members Collection
     match /family_members/{memberId} {
       allow read: if isSignedIn();
@@ -109,6 +131,11 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == notificationId;
       allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == existing().id;
       allow delete: if isSignedIn() && isValidId(notificationId);
+    }
+
+    // Connectivity test collection
+    match /test/{testId} {
+      allow read: if isSignedIn();
     }
   }
 }

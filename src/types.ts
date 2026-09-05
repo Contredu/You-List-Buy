@@ -123,3 +123,24 @@ export interface AIBudgetAdvice {
   bulkBuyRecommendations: string[];
   categoryBreakdown: CategoryBreakdown[];
 }
+
+export interface HouseholdMember {
+  uid: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar: string;
+  joinedAt: string;
+}
+
+export interface Household {
+  id: string;
+  name: string;
+  inviteCode: string;
+  ownerUid: string;
+  ownerEmail: string;
+  members: HouseholdMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+

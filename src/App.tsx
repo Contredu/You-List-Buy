@@ -26,6 +26,7 @@ import {
   MonthlyListItem,
   NotificationItem,
   PriceRecord,
+  Household,
 } from "./types";
 import { auth, googleProvider, testFirestoreConnection } from "./lib/firebase";
 import {
@@ -33,6 +34,7 @@ import {
   signOut,
   onAuthStateChanged,
   User,
+  updateProfile,
 } from "firebase/auth";
 import {
   seedInitialDataIfEmpty,
@@ -48,6 +50,13 @@ import {
   deleteMonthlyListItemFromDb,
   saveNotificationToDb,
   markNotificationReadInDb,
+  getOrCreateDefaultHousehold,
+  createNewHousehold,
+  joinHouseholdByCode,
+  subscribeToHousehold,
+  removeMemberFromHousehold,
+  updateHouseholdMemberProfile,
+  DEFAULT_LOCAL_HOUSEHOLD,
 } from "./services/firestoreService";
 import {
   INITIAL_MEMBERS,
@@ -66,12 +75,18 @@ import { PriceHistoryModal } from "./components/PriceHistoryModal";
 import { NewMonthModal } from "./components/NewMonthModal";
 import { SupermarketModeModal } from "./components/SupermarketModeModal";
 import { MobileInstallModal } from "./components/MobileInstallModal";
+import { LandingPage } from "./components/LandingPage";
+import { InviteFamilyModal } from "./components/InviteFamilyModal";
+import { UserProfileModal } from "./components/UserProfileModal";
 
 export default function App() {
   // Navigation State
   const [currentTab, setCurrentTab] = useState<
     "list" | "catalog" | "ai" | "reports" | "notifications"
   >("list");
+
+  // User Profile Modal State
+  const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
 
   // Core Domain State
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>(loadFamilyMembers);
@@ -86,7 +101,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isCloudConnected, setIsCloudConnected] = useState<boolean>(false);
 
-  // Modals
+  // Modals & Popups
   const [isAddToListOpen, setIsAddToListOpen] = useState(false);
   const [preSelectedProductForAdd, setPreSelectedProductForAdd] = useState<BaseProduct | null>(null);
   const [isAddEditProductOpen, setIsAddEditProductOpen] = useState(false);
@@ -98,11 +113,32 @@ export default function App() {
   const [isMobileInstallOpen, setIsMobileInstallOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Household & Shared Family Session State
+  const [currentHousehold, setCurrentHousehold] = useState<Household>(DEFAULT_LOCAL_HOUSEHOLD);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [showLanding, setShowLanding] = useState<boolean>(() => {
+    // Show landing page by default if user hasn't chosen to explore demo or has an active session
+    return !localStorage.getItem("pantry_guest_mode");
+  });
+  const [inviteCodeParam, setInviteCodeParam] = useState<string | null>(null);
+
+  // Read invite code from URL if present (e.g. ?join=FAM-2026)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("join");
+      if (code) {
+        setInviteCodeParam(code.trim().toUpperCase());
+      }
+    }
+  }, []);
+
   // Firebase Auth State Listener & DB Seeder
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
       if (user) {
+        setShowLanding(false);
         setIsSyncing(true);
         try {
           await testFirestoreConnection();
@@ -126,6 +162,90 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Subscribe to Household Realtime Data (only when authenticated)
+  useEffect(() => {
+    if (!authUser) {
+      setCurrentHousehold(DEFAULT_LOCAL_HOUSEHOLD);
+      return;
+    }
+
+    let unsubHousehold: (() => void) | undefined;
+    const initHousehold = async () => {
+      try {
+        const h = await getOrCreateDefaultHousehold(authUser);
+        if (h) {
+          setCurrentHousehold(h);
+          unsubHousehold = subscribeToHousehold(h.id, (updatedH) => {
+            if (updatedH) {
+              setCurrentHousehold(updatedH);
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Error al inicializar sesión compartida del hogar:", err);
+      }
+    };
+
+    initHousehold();
+
+    return () => {
+      if (unsubHousehold) unsubHousehold();
+    };
+  }, [authUser]);
+
+  // If user is authenticated and entered via invite code URL, join automatically
+  useEffect(() => {
+    if (authUser && inviteCodeParam) {
+      joinHouseholdByCode(inviteCodeParam, authUser).then((res) => {
+        if (res.success && res.household) {
+          setCurrentHousehold(res.household);
+          showToast(res.message);
+          try {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (e) {
+            // benign
+          }
+          setInviteCodeParam(null);
+        } else {
+          showToast(res.message);
+        }
+      });
+    }
+  }, [authUser, inviteCodeParam]);
+
+  // Ensure currentMember is strictly the authenticated user with their household role and avatar (no impersonation)
+  useEffect(() => {
+    if (authUser) {
+      const matchInHousehold = currentHousehold?.members.find(
+        (m) =>
+          m.uid === authUser.uid ||
+          (authUser.email && m.email.toLowerCase() === authUser.email.toLowerCase())
+      );
+
+      const isSessionAdmin = Boolean(
+        currentHousehold &&
+          (currentHousehold.ownerUid === authUser.uid ||
+            (currentHousehold.ownerEmail &&
+              authUser.email &&
+              currentHousehold.ownerEmail.toLowerCase() === authUser.email.toLowerCase()) ||
+            matchInHousehold?.role === "Administrador")
+      );
+
+      setCurrentMember((prev) => ({
+        ...prev,
+        id: authUser.uid,
+        name:
+          matchInHousehold?.name ||
+          authUser.displayName ||
+          authUser.email?.split("@")[0] ||
+          prev.name,
+        email: authUser.email || prev.email,
+        avatar: matchInHousehold?.avatar || prev.avatar || "👤",
+        role: isSessionAdmin ? "Administrador" : "Familiar",
+      }));
+    }
+  }, [authUser, currentHousehold]);
 
   // Realtime Subscriptions with Firestore when authenticated
   useEffect(() => {
@@ -283,6 +403,7 @@ export default function App() {
       // Sum quantities
       const existing = updatedItems[existingItemIndex];
       const newQuantity = existing.quantity + quantity;
+      const cleanNote = note?.trim() || "";
       const newAddedBy = [
         ...existing.addedBy,
         {
@@ -291,7 +412,7 @@ export default function App() {
           memberAvatar: currentMember.avatar,
           quantityAdded: quantity,
           timestamp: new Date().toISOString(),
-          note,
+          ...(cleanNote ? { note: cleanNote } : {}),
         },
       ];
 
@@ -307,6 +428,7 @@ export default function App() {
       );
     } else {
       // Add new item entry
+      const cleanNote = note?.trim() || "";
       const newItem: MonthlyListItem = {
         id: `item_${Date.now()}`,
         productId: product.id,
@@ -317,7 +439,7 @@ export default function App() {
         quantity,
         purchased: false,
         priority,
-        notes: note,
+        notes: cleanNote,
         addedBy: [
           {
             memberId: currentMember.id,
@@ -325,7 +447,7 @@ export default function App() {
             memberAvatar: currentMember.avatar,
             quantityAdded: quantity,
             timestamp: new Date().toISOString(),
-            note,
+            ...(cleanNote ? { note: cleanNote } : {}),
           },
         ],
       };
@@ -619,6 +741,120 @@ export default function App() {
     }
   };
 
+  // Household Session Handlers
+  const handleJoinHouseholdByCode = async (code: string) => {
+    if (!authUser) {
+      showToast("Iniciando sesión con Google para unirte al hogar...");
+      try {
+        const userCred = await signInWithPopup(auth, googleProvider);
+        if (userCred.user) {
+          const res = await joinHouseholdByCode(code, userCred.user);
+          if (res.success && res.household) {
+            setCurrentHousehold(res.household);
+          }
+          return res;
+        }
+      } catch {
+        return { success: false, message: "Inicio de sesión cancelado." };
+      }
+      return { success: false, message: "No se pudo iniciar sesión." };
+    }
+
+    const res = await joinHouseholdByCode(code, authUser);
+    if (res.success && res.household) {
+      setCurrentHousehold(res.household);
+    }
+    return res;
+  };
+
+  const handleCreateNewHousehold = async (name: string) => {
+    if (!authUser) {
+      showToast("Inicia sesión para crear una sesión familiar");
+      await signInWithPopup(auth, googleProvider);
+      return;
+    }
+    const newH = await createNewHousehold(name, authUser);
+    setCurrentHousehold(newH);
+  };
+
+  // Member Removal Handler (Session Administrator only)
+  const handleRemoveMember = async (memberUid: string) => {
+    if (!authUser || !currentHousehold) return;
+    const res = await removeMemberFromHousehold(currentHousehold.id, memberUid, authUser);
+    showToast(res.message);
+    if (res.success) {
+      setCurrentHousehold((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          members: prev.members.filter((m) => m.uid !== memberUid),
+        };
+      });
+    }
+  };
+
+  // User Profile Update Handler
+  const handleUpdateUserProfile = async (name: string, avatar: string) => {
+    if (!authUser) return;
+    try {
+      await updateProfile(authUser, { displayName: name });
+    } catch {
+      // Ignore if auth provider doesn't support custom display name
+    }
+
+    if (currentHousehold) {
+      await updateHouseholdMemberProfile(currentHousehold.id, authUser.uid, name, avatar);
+      setCurrentHousehold((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          members: prev.members.map((m) =>
+            m.uid === authUser.uid ? { ...m, name, avatar } : m
+          ),
+        };
+      });
+    }
+
+    // Update family members list & active member
+    setFamilyMembers((prev) =>
+      prev.map((m) =>
+        (authUser.email && m.email.toLowerCase() === authUser.email.toLowerCase()) ||
+        m.id === currentMember.id
+          ? { ...m, name, avatar }
+          : m
+      )
+    );
+    setCurrentMember((prev) => ({ ...prev, name, avatar }));
+  };
+
+  // Strict Condition: If user is not logged in, immediately redirect to landing page to obtain access token
+  if (!authUser) {
+    return (
+      <>
+        <LandingPage
+          onExploreDemo={() => {
+            showToast("Para acceder a la despensa y lista compartida, inicia sesión o regístrate.");
+            const authCard = document.getElementById("auth-card-section");
+            if (authCard) {
+              authCard.scrollIntoView({ behavior: "smooth" });
+            }
+          }}
+          inviteCodeFromUrl={inviteCodeParam}
+          onSuccessAuth={() => {
+            setShowLanding(false);
+          }}
+          onShowToast={showToast}
+        />
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 bg-stone-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-stone-800 text-xs sm:text-sm font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-stone-100 text-stone-900 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900">
       {/* Navbar */}
@@ -645,6 +881,12 @@ export default function App() {
         onSignInWithGoogle={handleSignInWithGoogle}
         onSignOut={handleSignOut}
         isSyncing={isSyncing}
+        currentHousehold={currentHousehold}
+        onOpenInviteModal={() => setIsInviteModalOpen(true)}
+        onReturnToLanding={() => {
+          handleSignOut();
+        }}
+        onOpenUserProfile={() => setIsUserProfileOpen(true)}
       />
 
       {/* Cloud Sync Announcement Banner if not authenticated */}
@@ -684,6 +926,9 @@ export default function App() {
             onOpenSupermarketMode={() => setIsSupermarketModeOpen(true)}
             onAutoImportLowStock={handleAutoImportLowStock}
             lowStockCount={lowStockProducts.length}
+            onOpenInviteModal={() => setIsInviteModalOpen(true)}
+            householdName={currentHousehold?.name}
+            householdInviteCode={currentHousehold?.inviteCode}
           />
         )}
 
@@ -811,6 +1056,27 @@ export default function App() {
       <MobileInstallModal
         isOpen={isMobileInstallOpen}
         onClose={() => setIsMobileInstallOpen(false)}
+      />
+
+      <InviteFamilyModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        household={currentHousehold}
+        authUser={authUser}
+        onJoinByCode={handleJoinHouseholdByCode}
+        onCreateNewHousehold={handleCreateNewHousehold}
+        onRemoveMember={handleRemoveMember}
+        onShowToast={showToast}
+      />
+
+      <UserProfileModal
+        isOpen={isUserProfileOpen}
+        onClose={() => setIsUserProfileOpen(false)}
+        authUser={authUser}
+        household={currentHousehold}
+        onSaveProfile={handleUpdateUserProfile}
+        onSignOut={handleSignOut}
+        onShowToast={showToast}
       />
 
       {/* Floating Toast Notification */}

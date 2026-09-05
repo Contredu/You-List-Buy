@@ -71,7 +71,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProductId || quantity <= 0) return;
-    onConfirmAdd(selectedProductId, quantity, priority, note.trim() || undefined);
+    onConfirmAdd(selectedProductId, quantity, priority, note.trim());
     onClose();
   };
 

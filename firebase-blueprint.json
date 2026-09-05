@@ -88,9 +88,45 @@
         "severity": { "type": "string", "maxLength": 20 }
       },
       "required": ["id", "type", "title", "message", "timestamp", "read", "severity"]
+    },
+    "Household": {
+      "title": "Household",
+      "description": "A shared household pantry session space",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "inviteCode": { "type": "string", "maxLength": 30 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "ownerEmail": { "type": "string", "maxLength": 150 },
+        "members": { "type": "array" },
+        "createdAt": { "type": "string", "maxLength": 40 },
+        "updatedAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["id", "name", "inviteCode", "ownerUid"]
+    },
+    "InviteCode": {
+      "title": "InviteCode",
+      "description": "Lookup index for household invite codes",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 30 },
+        "householdId": { "type": "string", "maxLength": 128 },
+        "householdName": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["code", "householdId"]
     }
   },
   "firestore": {
+    "/households/{householdId}": {
+      "schema": "Household",
+      "description": "Shared household and family session configuration"
+    },
+    "/invite_codes/{code}": {
+      "schema": "InviteCode",
+      "description": "Invite code lookup directory to join family sessions"
+    },
     "/family_members/{memberId}": {
       "schema": "FamilyMember",
       "description": "Family members participating in household shopping"

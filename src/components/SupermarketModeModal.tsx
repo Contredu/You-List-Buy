@@ -54,9 +54,9 @@ export const SupermarketModeModal: React.FC<SupermarketModeModalProps> = ({
         return {
           ...i,
           purchased: newPurchased,
-          purchasedBy: newPurchased ? currentMember.name : undefined,
-          purchasedAt: newPurchased ? new Date().toISOString() : undefined,
-          actualPrice: newPurchased && !i.actualPrice ? i.estimatedPrice : i.actualPrice,
+          purchasedBy: newPurchased ? currentMember.name : "",
+          purchasedAt: newPurchased ? new Date().toISOString() : "",
+          actualPrice: newPurchased && !i.actualPrice ? i.estimatedPrice : (i.actualPrice ?? i.estimatedPrice),
         };
       }
       return i;

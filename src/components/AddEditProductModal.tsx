@@ -87,9 +87,9 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
       minStock: minStockNum,
       idealStock: idealStockNum,
       currentPrice: priceNum,
-      brand: brand.trim() || undefined,
-      favoriteStore: favoriteStore.trim() || undefined,
-      notes: notes.trim() || undefined,
+      brand: brand.trim(),
+      favoriteStore: favoriteStore.trim(),
+      notes: notes.trim(),
       lastUpdated: today,
       priceHistory: productToEdit
         ? [

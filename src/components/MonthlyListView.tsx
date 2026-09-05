@@ -32,6 +32,9 @@ interface MonthlyListViewProps {
   onOpenSupermarketMode: () => void;
   onAutoImportLowStock: () => void;
   lowStockCount: number;
+  onOpenInviteModal?: () => void;
+  householdName?: string;
+  householdInviteCode?: string;
 }
 
 export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
@@ -43,6 +46,9 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
   onOpenSupermarketMode,
   onAutoImportLowStock,
   lowStockCount,
+  onOpenInviteModal,
+  householdName,
+  householdInviteCode,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -91,9 +97,9 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
         return {
           ...i,
           purchased: newPurchased,
-          purchasedBy: newPurchased ? currentMember.name : undefined,
-          purchasedAt: newPurchased ? new Date().toISOString() : undefined,
-          actualPrice: newPurchased && !i.actualPrice ? i.estimatedPrice : i.actualPrice,
+          purchasedBy: newPurchased ? currentMember.name : "",
+          purchasedAt: newPurchased ? new Date().toISOString() : "",
+          actualPrice: newPurchased && !i.actualPrice ? i.estimatedPrice : (i.actualPrice ?? i.estimatedPrice),
         };
       }
       return i;
@@ -224,10 +230,38 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
             <p className="text-xs sm:text-sm text-stone-500 mt-1">
               Lista de compras compartida de la familia. Añade productos y cantidades acumulativas.
             </p>
+            {householdInviteCode && (
+              <div className="flex items-center gap-2 mt-1.5 text-xs text-stone-600">
+                <span className="inline-flex items-center gap-1 font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                  <Users className="w-3 h-3 text-emerald-600" />
+                  {householdName || "Hogar Familiar"} (Código: {householdInviteCode})
+                </span>
+                {onOpenInviteModal && (
+                  <button
+                    onClick={onOpenInviteModal}
+                    className="text-emerald-700 hover:text-emerald-900 font-semibold underline text-[11px] cursor-pointer"
+                  >
+                    Invitar a otros
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {onOpenInviteModal && (
+              <button
+                id="invite-family-list-header-btn"
+                onClick={onOpenInviteModal}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                title="Invitar a familiares a estar en esta misma sesión de compra"
+              >
+                <Users className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Invitar a la Sesión</span>
+              </button>
+            )}
+
             {lowStockCount > 0 && (
               <button
                 id="auto-import-low-stock-btn"
