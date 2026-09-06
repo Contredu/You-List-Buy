@@ -38,6 +38,7 @@ import {
 } from "firebase/auth";
 import {
   seedInitialDataIfEmpty,
+  purgeMockDataFromFirestore,
   subscribeToFamilyMembers,
   subscribeToBaseProducts,
   subscribeToMonthlyLists,
@@ -59,6 +60,8 @@ import {
   DEFAULT_LOCAL_HOUSEHOLD,
 } from "./services/firestoreService";
 import {
+  getCurrentMonthKey,
+  getCurrentMonthTitle,
   INITIAL_MEMBERS,
   INITIAL_BASE_PRODUCTS,
   INITIAL_MONTHLY_LISTS,
@@ -133,7 +136,7 @@ export default function App() {
     }
   }, []);
 
-  // Firebase Auth State Listener & DB Seeder
+  // Firebase Auth State Listener & DB Initialization (Clean Start)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setAuthUser(user);
@@ -142,12 +145,14 @@ export default function App() {
         setIsSyncing(true);
         try {
           await testFirestoreConnection();
-          // Seed DB if it's the first time
-          await seedInitialDataIfEmpty(
-            INITIAL_MEMBERS,
-            INITIAL_BASE_PRODUCTS,
-            INITIAL_MONTHLY_LISTS
-          );
+          // Auto-purge any legacy mock data (prod_1..prod_25, mock users, old mock lists) once
+          const hasCleanedLegacy = localStorage.getItem("despensa_clean_production_v5");
+          if (!hasCleanedLegacy) {
+            await purgeMockDataFromFirestore(user);
+            localStorage.setItem("despensa_clean_production_v5", "true");
+          } else {
+            await seedInitialDataIfEmpty(user);
+          }
           setIsCloudConnected(true);
           showToast(`Sincronización en la Nube activa como ${user.displayName || user.email}`);
         } catch (err) {
@@ -252,24 +257,20 @@ export default function App() {
     if (!authUser) return;
 
     const unsubMembers = subscribeToFamilyMembers((members) => {
-      if (members && members.length > 0) {
-        setFamilyMembers(members);
-        // Automatically switch active member to match signed-in user's email if possible
-        if (authUser.email) {
-          const matched = members.find(
-            (m) => m.email.toLowerCase() === authUser.email?.toLowerCase()
-          );
-          if (matched) {
-            setCurrentMember(matched);
-          }
+      setFamilyMembers(members || []);
+      // Automatically switch active member to match signed-in user's email if possible
+      if (authUser.email && members && members.length > 0) {
+        const matched = members.find(
+          (m) => m.email.toLowerCase() === authUser.email?.toLowerCase()
+        );
+        if (matched) {
+          setCurrentMember(matched);
         }
       }
     });
 
     const unsubProducts = subscribeToBaseProducts((products) => {
-      if (products && products.length > 0) {
-        setBaseProducts(products);
-      }
+      setBaseProducts(products || []);
     });
 
     const unsubLists = subscribeToMonthlyLists((lists) => {
@@ -287,7 +288,7 @@ export default function App() {
     });
 
     const unsubNotifs = subscribeToNotifications((notifs) => {
-      setNotifications(notifs);
+      setNotifications(notifs || []);
     });
 
     return () => {
@@ -333,6 +334,36 @@ export default function App() {
       showToast("Sesión cerrada. Modo local activado.");
     } catch (error) {
       console.error("Error signing out:", error);
+    }
+  };
+
+  const handleResetToCleanDatabase = async () => {
+    if (!authUser) return;
+    setIsSyncing(true);
+    try {
+      await purgeMockDataFromFirestore(authUser);
+      setBaseProducts([]);
+      const currentKey = getCurrentMonthKey();
+      const currentTitle = getCurrentMonthTitle();
+      const initialCleanList: MonthlyList = {
+        id: `list_${currentKey.replace("-", "_")}`,
+        monthKey: currentKey,
+        title: currentTitle,
+        budget: 400,
+        status: "en_progreso",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        items: [],
+      };
+      setMonthlyLists([initialCleanList]);
+      setActiveMonthKey(currentKey);
+      setNotifications([]);
+      showToast("Base de datos limpia y lista desde cero");
+    } catch (err) {
+      console.error("Error al reiniciar base de datos:", err);
+      showToast("Error al reiniciar la base de datos");
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -940,6 +971,10 @@ export default function App() {
             onAutoImportLowStock={handleAutoImportLowStock}
             lowStockCount={lowStockProducts.length}
             onOpenInviteModal={() => setIsInviteModalOpen(true)}
+            onOpenNewProductModal={() => {
+              setProductToEdit(null);
+              setIsAddEditProductOpen(true);
+            }}
             householdName={currentHousehold?.name}
             householdInviteCode={currentHousehold?.inviteCode}
           />
@@ -1026,6 +1061,11 @@ export default function App() {
         currentMember={currentMember}
         onConfirmAdd={handleConfirmAddToList}
         preSelectedProduct={preSelectedProductForAdd}
+        onOpenCreateProduct={() => {
+          setIsAddToListOpen(false);
+          setProductToEdit(null);
+          setIsAddEditProductOpen(true);
+        }}
       />
 
       <AddEditProductModal
@@ -1090,6 +1130,7 @@ export default function App() {
         onSaveProfile={handleUpdateUserProfile}
         onSignOut={handleSignOut}
         onShowToast={showToast}
+        onResetToCleanDatabase={handleResetToCleanDatabase}
       />
 
       {/* Floating Toast Notification */}

@@ -47,56 +47,105 @@ export function sanitizeForFirestore<T>(data: T): T {
   return data;
 }
 
-// Seed Database if empty
+// Seed Database if empty: Only creates active monthly list for current month with 0 items, NO mock products or mock members.
 export async function seedInitialDataIfEmpty(
-  defaultMembers: FamilyMember[],
-  defaultProducts: BaseProduct[],
-  defaultLists: MonthlyList[]
+  currentUser?: User | null
 ): Promise<void> {
-  const membersRef = collection(db, "family_members");
   try {
-    const membersSnap = await getDocs(membersRef);
-    if (!membersSnap.empty) {
-      return; // Already seeded
-    }
+    const listsRef = collection(db, "monthly_lists");
+    const listsSnap = await getDocs(listsRef);
+    if (listsSnap.empty) {
+      const now = new Date();
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const monthNames = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+      ];
+      const title = `Lista de ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+      const listId = `list_${monthKey.replace("-", "_")}`;
 
-    const batch = writeBatch(db);
-
-    // 1. Seed Family Members
-    defaultMembers.forEach((member) => {
-      const memberDoc = doc(db, "family_members", member.id);
-      batch.set(memberDoc, sanitizeForFirestore(member));
-    });
-
-    // 2. Seed Base Products
-    defaultProducts.forEach((product) => {
-      const prodDoc = doc(db, "base_products", product.id);
-      batch.set(prodDoc, sanitizeForFirestore(product));
-    });
-
-    // 3. Seed Monthly Lists and their items
-    for (const list of defaultLists) {
-      const listDoc = doc(db, "monthly_lists", list.id);
-      batch.set(listDoc, sanitizeForFirestore({
-        id: list.id,
-        monthKey: list.monthKey,
-        title: list.title,
-        budget: list.budget,
-        status: list.status,
-        createdAt: list.createdAt,
-        updatedAt: list.updatedAt,
+      await setDoc(doc(db, "monthly_lists", listId), sanitizeForFirestore({
+        id: listId,
+        monthKey,
+        title,
+        budget: 400,
+        status: "activa",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }));
-
-      // Seed items in subcollection
-      list.items.forEach((item) => {
-        const itemDoc = doc(db, `monthly_lists/${list.id}/items`, item.id);
-        batch.set(itemDoc, sanitizeForFirestore(item));
-      });
     }
 
-    await batch.commit();
+    if (currentUser) {
+      const memberDoc = doc(db, "family_members", currentUser.uid);
+      await setDoc(memberDoc, sanitizeForFirestore({
+        id: currentUser.uid,
+        name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
+        role: "Administrador",
+        avatar: "👑",
+        color: "#10b981",
+        email: currentUser.email || "",
+      }), { merge: true });
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, "seedInitialData");
+  }
+}
+
+// Purge legacy mock data (prod_1..prod_25, mock lists, dummy family members) from Firestore
+export async function purgeMockDataFromFirestore(currentUser: User): Promise<void> {
+  try {
+    // 1. Delete all mock products
+    const prodSnap = await getDocs(collection(db, "base_products"));
+    const prodBatch = writeBatch(db);
+    let prodDeleteCount = 0;
+    prodSnap.forEach((d) => {
+      if (d.id.startsWith("prod_")) {
+        prodBatch.delete(d.ref);
+        prodDeleteCount++;
+      }
+    });
+    if (prodDeleteCount > 0) {
+      await prodBatch.commit();
+    }
+
+    // 2. Delete mock family members (keeping only real authenticated users)
+    const membersSnap = await getDocs(collection(db, "family_members"));
+    const memberBatch = writeBatch(db);
+    let memberDeleteCount = 0;
+    membersSnap.forEach((d) => {
+      if (d.id !== currentUser.uid && (d.id.startsWith("mem_") || d.id === "default_user")) {
+        memberBatch.delete(d.ref);
+        memberDeleteCount++;
+      }
+    });
+    // Ensure current user is active in family_members
+    const userMemberDoc = doc(db, "family_members", currentUser.uid);
+    memberBatch.set(userMemberDoc, sanitizeForFirestore({
+      id: currentUser.uid,
+      name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
+      role: "Administrador",
+      avatar: "👑",
+      color: "#10b981",
+      email: currentUser.email || "",
+    }));
+    await memberBatch.commit();
+
+    // 3. Delete mock monthly lists
+    const listsSnap = await getDocs(collection(db, "monthly_lists"));
+    for (const d of listsSnap.docs) {
+      if (d.id === "list_aug_2026" || d.id === "list_jul_2026" || d.id === "list_jun_2026") {
+        const itemsSnap = await getDocs(collection(db, `monthly_lists/${d.id}/items`));
+        const itemsBatch = writeBatch(db);
+        itemsSnap.forEach((itemDoc) => itemsBatch.delete(itemDoc.ref));
+        itemsBatch.delete(d.ref);
+        await itemsBatch.commit();
+      }
+    }
+
+    // 4. Clean household dummy members
+    await getOrCreateDefaultHousehold(currentUser);
+  } catch (error) {
+    console.error("Error purging mock data from Firestore:", error);
   }
 }
 
@@ -339,38 +388,13 @@ export const DEFAULT_INVITE_CODE = "FAM-2026";
 
 export const DEFAULT_LOCAL_HOUSEHOLD: Household = {
   id: DEFAULT_HOUSEHOLD_ID,
-  name: "Hogar Familia Contreras",
+  name: "Mi Hogar Familiar",
   inviteCode: DEFAULT_INVITE_CODE,
-  ownerUid: "mem_carlos",
-  ownerEmail: "carlos.contredu@gmail.com",
-  members: [
-    {
-      uid: "mem_carlos",
-      name: "Carlos Enrique",
-      email: "carlos.contredu@gmail.com",
-      role: "Administrador",
-      avatar: "👨‍💼",
-      joinedAt: "2026-01-01T00:00:00.000Z",
-    },
-    {
-      uid: "mem_juana",
-      name: "Juana Ysabel",
-      email: "diazsaenzj@yahoo.com",
-      role: "Familiar",
-      avatar: "👩‍🍳",
-      joinedAt: "2026-01-01T00:00:00.000Z",
-    },
-    {
-      uid: "mem_noelia",
-      name: "Noelia Isabel",
-      email: "noejua9255@gmail.com",
-      role: "Familiar",
-      avatar: "👧",
-      joinedAt: "2026-01-01T00:00:00.000Z",
-    },
-  ],
-  createdAt: "2026-01-01T00:00:00.000Z",
-  updatedAt: "2026-01-01T00:00:00.000Z",
+  ownerUid: "",
+  ownerEmail: "",
+  members: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 };
 
 export function generateRandomInviteCode(): string {
@@ -396,62 +420,83 @@ export async function getOrCreateDefaultHousehold(
     const snap = await getDoc(hRef);
     if (snap.exists()) {
       const hData = snap.data() as Household;
-      // If user is authenticated, ensure they are listed in members
-      if (currentUser && currentUser.email) {
-        const hasMember = hData.members.some(
-          (m) => m.email.toLowerCase() === currentUser.email?.toLowerCase()
-        );
-        if (!hasMember) {
-          const newMember: HouseholdMember = {
-            uid: currentUser.uid,
-            name: currentUser.displayName || currentUser.email.split("@")[0],
-            email: currentUser.email,
-            role: "Familiar",
-            avatar: "👤",
-            joinedAt: new Date().toISOString(),
-          };
-          const updatedMembers = [...hData.members, newMember];
-          await setDoc(hRef, sanitizeForFirestore({ members: updatedMembers }), { merge: true });
-          hData.members = updatedMembers;
-        }
+      // Filter out dummy members without a real google uid
+      const cleanMembers = hData.members.filter(
+        (m) =>
+          m.uid !== "mem_juana" &&
+          m.uid !== "mem_noelia" &&
+          m.uid !== "mem_1" &&
+          m.uid !== "mem_2" &&
+          m.uid !== "mem_3"
+      );
+
+      // Check if current authenticated user is listed
+      const hasMember = cleanMembers.some(
+        (m) =>
+          m.uid === currentUser.uid ||
+          (currentUser.email && m.email.toLowerCase() === currentUser.email?.toLowerCase())
+      );
+
+      let updatedMembers = cleanMembers;
+      if (!hasMember) {
+        const newMember: HouseholdMember = {
+          uid: currentUser.uid,
+          name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
+          email: currentUser.email || "",
+          role: cleanMembers.length === 0 ? "Administrador" : "Familiar",
+          avatar: cleanMembers.length === 0 ? "👑" : "👤",
+          joinedAt: new Date().toISOString(),
+        };
+        updatedMembers = [...cleanMembers, newMember];
       }
-      return hData;
+
+      // If owner was dummy or missing, assign to current user
+      const updatedOwnerUid =
+        !hData.ownerUid || hData.ownerUid.startsWith("mem_")
+          ? currentUser.uid
+          : hData.ownerUid;
+      const updatedOwnerEmail =
+        !hData.ownerEmail || hData.ownerEmail.includes("example.com")
+          ? currentUser.email || ""
+          : hData.ownerEmail;
+      const updatedName =
+        hData.name === "Hogar Familia Contreras"
+          ? currentUser.displayName
+            ? `Hogar de ${currentUser.displayName}`
+            : "Mi Hogar Familiar"
+          : hData.name;
+
+      const updatedHousehold: Household = {
+        ...hData,
+        name: updatedName,
+        ownerUid: updatedOwnerUid,
+        ownerEmail: updatedOwnerEmail,
+        members: updatedMembers,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await setDoc(hRef, sanitizeForFirestore(updatedHousehold), { merge: true });
+      return updatedHousehold;
     }
 
-    // Create default household
+    // Create fresh default household with ONLY the authenticated user
     const initialMembers: HouseholdMember[] = [
       {
-        uid: currentUser?.uid || "mem_carlos",
-        name: currentUser?.displayName || "Carlos Enrique",
-        email: currentUser?.email || "carlos.contredu@gmail.com",
+        uid: currentUser.uid,
+        name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
+        email: currentUser.email || "",
         role: "Administrador",
-        avatar: "👨‍💼",
-        joinedAt: new Date().toISOString(),
-      },
-      {
-        uid: "mem_juana",
-        name: "Juana Ysabel",
-        email: "diazsaenzj@yahoo.com",
-        role: "Familiar",
-        avatar: "👩‍🍳",
-        joinedAt: new Date().toISOString(),
-      },
-      {
-        uid: "mem_noelia",
-        name: "Noelia Isabel",
-        email: "noejua9255@gmail.com",
-        role: "Familiar",
-        avatar: "👧",
+        avatar: "👑",
         joinedAt: new Date().toISOString(),
       },
     ];
 
     const defaultHousehold: Household = {
       id: DEFAULT_HOUSEHOLD_ID,
-      name: "Hogar Familia Contreras",
+      name: currentUser.displayName ? `Hogar de ${currentUser.displayName}` : "Mi Hogar Familiar",
       inviteCode: DEFAULT_INVITE_CODE,
-      ownerUid: currentUser?.uid || "mem_carlos",
-      ownerEmail: currentUser?.email || "carlos.contredu@gmail.com",
+      ownerUid: currentUser.uid,
+      ownerEmail: currentUser.email || "",
       members: initialMembers,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

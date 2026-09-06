@@ -33,6 +33,7 @@ interface MonthlyListViewProps {
   onAutoImportLowStock: () => void;
   lowStockCount: number;
   onOpenInviteModal?: () => void;
+  onOpenNewProductModal?: () => void;
   householdName?: string;
   householdInviteCode?: string;
 }
@@ -47,6 +48,7 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
   onAutoImportLowStock,
   lowStockCount,
   onOpenInviteModal,
+  onOpenNewProductModal,
   householdName,
   householdInviteCode,
 }) => {
@@ -491,18 +493,41 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
             <ShoppingBag className="w-7 h-7" />
           </div>
           <h3 className="text-base font-bold text-stone-800">
-            No hay productos que coincidan con la búsqueda
+            {activeList.items.length === 0
+              ? baseProducts.length === 0
+                ? "Tu lista y despensa están listas para comenzar"
+                : "Tu lista de compras está vacía"
+              : "No hay productos que coincidan con la búsqueda"}
           </h3>
-          <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto mt-1 mb-5">
-            Añade productos desde el catálogo base configurable para armar el presupuesto mensual.
+          <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto mt-1 mb-5 leading-relaxed">
+            {activeList.items.length === 0
+              ? baseProducts.length === 0
+                ? "Comienza registrando los productos habituales de tu casa (leche, huevos, aceite...) en el catálogo para armar tus listas mensuales."
+                : "Añade productos desde tu catálogo base para planificar las compras y controlar el gasto familiar de este mes."
+              : "Prueba ajustando los filtros o el texto de búsqueda."}
           </p>
-          <button
-            onClick={onOpenAddToListModal}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Añadir Producto desde Catálogo</span>
-          </button>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {baseProducts.length === 0 && onOpenNewProductModal && (
+              <button
+                onClick={onOpenNewProductModal}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Crear Primer Producto</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenAddToListModal}
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
+                baseProducts.length === 0
+                  ? "bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-200"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>Añadir a la Lista</span>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="space-y-3">

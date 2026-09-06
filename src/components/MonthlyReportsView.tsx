@@ -104,6 +104,12 @@ export const MonthlyReportsView: React.FC<MonthlyReportsViewProps> = ({
       ? totalLifetimeSpent / monthlySummaryData.length
       : 0;
 
+  const bestSavingMonth = monthlySummaryData.reduce(
+    (best: (typeof monthlySummaryData)[0] | null, curr) =>
+      curr.ahorro > 0 && (!best || curr.ahorro > best.ahorro) ? curr : best,
+    null as (typeof monthlySummaryData)[0] | null
+  );
+
   // Export to CSV
   const handleExportCSV = () => {
     if (!targetList) return;
@@ -194,10 +200,14 @@ export const MonthlyReportsView: React.FC<MonthlyReportsViewProps> = ({
             Mes con Mayor Ahorro
           </p>
           <p className="text-xl sm:text-2xl font-bold text-teal-700 mt-1">
-            Junio 2026 (+48,15 €)
+            {bestSavingMonth
+              ? `${bestSavingMonth.name} (+${formatCurrency(bestSavingMonth.ahorro)})`
+              : "Sin datos de ahorro aún"}
           </p>
           <span className="text-[11px] text-stone-400">
-            12.6% por debajo del presupuesto
+            {bestSavingMonth && bestSavingMonth.presupuesto > 0
+              ? `${((bestSavingMonth.ahorro / bestSavingMonth.presupuesto) * 100).toFixed(1)}% por debajo del presupuesto`
+              : "Calculado al finalizar compras"}
           </span>
         </div>
       </div>

@@ -9,6 +9,7 @@ import {
   Sparkles,
   Save,
   Users,
+  Trash2,
 } from "lucide-react";
 import { User } from "firebase/auth";
 import { Household } from "../types";
@@ -21,6 +22,7 @@ interface UserProfileModalProps {
   onSaveProfile: (name: string, avatar: string) => Promise<void>;
   onSignOut: () => void;
   onShowToast: (msg: string) => void;
+  onResetToCleanDatabase?: () => Promise<void>;
 }
 
 const AVATAR_OPTIONS = [
@@ -35,6 +37,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onSaveProfile,
   onSignOut,
   onShowToast,
+  onResetToCleanDatabase,
 }) => {
   const currentMember = household?.members.find(
     (m) =>
@@ -55,6 +58,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("👤");
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -246,8 +250,36 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </button>
         </form>
 
-        {/* Sign Out Section in Footer */}
-        <div className="bg-stone-50 p-5 border-t border-stone-200">
+        {/* Sign Out and Admin Maintenance Section in Footer */}
+        <div className="bg-stone-50 p-5 border-t border-stone-200 space-y-2.5">
+          {isOwnerOrAdmin && onResetToCleanDatabase && (
+            <button
+              id="profile-reset-db-btn"
+              type="button"
+              disabled={isResetting}
+              onClick={async () => {
+                const confirmed = window.confirm(
+                  "¿Estás seguro de que deseas limpiar los productos y datos de prueba? Esta acción dejará el catálogo y las listas listos desde cero para ingresar tus propios productos familiares."
+                );
+                if (!confirmed) return;
+                setIsResetting(true);
+                try {
+                  await onResetToCleanDatabase();
+                  onShowToast("Base de datos reiniciada a estado limpio");
+                  onClose();
+                } catch {
+                  onShowToast("Error al reiniciar la base de datos");
+                } finally {
+                  setIsResetting(false);
+                }
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-semibold rounded-xl text-xs sm:text-sm transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4 text-amber-600" />
+              <span>{isResetting ? "Limpiando base de datos..." : "Limpiar datos de prueba (Iniciar desde cero)"}</span>
+            </button>
+          )}
+
           <button
             id="profile-signout-btn"
             type="button"

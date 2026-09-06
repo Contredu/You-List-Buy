@@ -27,6 +27,7 @@ interface AddToListModalProps {
     note?: string
   ) => void;
   preSelectedProduct?: BaseProduct | null;
+  onOpenCreateProduct?: () => void;
 }
 
 export const AddToListModal: React.FC<AddToListModalProps> = ({
@@ -37,6 +38,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
   currentMember,
   onConfirmAdd,
   preSelectedProduct,
+  onOpenCreateProduct,
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProductId, setSelectedProductId] = useState<string>(
@@ -122,17 +124,40 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto">
-          {/* Product Picker */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
-                1. Elige el Producto
-              </label>
-              <span className="text-[11px] text-stone-500">
-                {filteredProducts.length} disponibles
-              </span>
+        {baseProducts.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
+              <Package className="w-7 h-7" />
             </div>
+            <h3 className="text-base font-bold text-stone-800">
+              Tu catálogo base está vacío
+            </h3>
+            <p className="text-xs sm:text-sm text-stone-500 max-w-sm mx-auto mt-1 mb-5 leading-relaxed">
+              Para agregar productos a tu lista de la compra, primero necesitas registrarlos en tu despensa familiar con su unidad y precio habitual.
+            </p>
+            {onOpenCreateProduct && (
+              <button
+                type="button"
+                onClick={onOpenCreateProduct}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Crear mi primer producto</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto">
+            {/* Product Picker */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
+                  1. Elige el Producto
+                </label>
+                <span className="text-[11px] text-stone-500">
+                  {filteredProducts.length} disponibles
+                </span>
+              </div>
 
             {/* Selected Product Banner for absolute visual clarity */}
             {selectedProduct && (
@@ -359,6 +384,7 @@ export const AddToListModal: React.FC<AddToListModalProps> = ({
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );
