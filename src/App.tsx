@@ -181,6 +181,7 @@ export default function App() {
         const h = await getOrCreateDefaultHousehold(authUser);
         if (h) {
           setCurrentHousehold(h);
+          await seedInitialDataIfEmpty(authUser, h.id);
           unsubHousehold = subscribeToHousehold(h.id, (updatedH) => {
             if (updatedH) {
               setCurrentHousehold(updatedH);
@@ -252,9 +253,11 @@ export default function App() {
     }
   }, [authUser, currentHousehold]);
 
-  // Realtime Subscriptions with Firestore when authenticated
+  // Realtime Subscriptions with Firestore scoped to the active household
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || !currentHousehold?.id) return;
+
+    const householdId = currentHousehold.id;
 
     const unsubMembers = subscribeToFamilyMembers((members) => {
       setFamilyMembers(members || []);
@@ -267,11 +270,11 @@ export default function App() {
           setCurrentMember(matched);
         }
       }
-    });
+    }, householdId);
 
     const unsubProducts = subscribeToBaseProducts((products) => {
       setBaseProducts(products || []);
-    });
+    }, householdId);
 
     const unsubLists = subscribeToMonthlyLists((lists) => {
       if (lists && lists.length > 0) {
@@ -285,11 +288,11 @@ export default function App() {
           });
         });
       }
-    });
+    }, householdId);
 
     const unsubNotifs = subscribeToNotifications((notifs) => {
       setNotifications(notifs || []);
-    });
+    }, householdId);
 
     return () => {
       unsubMembers();
@@ -297,7 +300,7 @@ export default function App() {
       unsubLists();
       unsubNotifs();
     };
-  }, [authUser]);
+  }, [authUser, currentHousehold?.id]);
 
   // Realtime Subcollection subscription for items of the active monthly list
   const currentActiveList = monthlyLists.find((l) => l.monthKey === activeMonthKey);
@@ -511,7 +514,7 @@ export default function App() {
     setNotifications((prev) => [newNotif, ...prev]);
 
     if (authUser) {
-      saveNotificationToDb(newNotif);
+      saveNotificationToDb(newNotif, currentHousehold?.id);
     }
   };
 
@@ -530,9 +533,9 @@ export default function App() {
       prev.map((l) => (l.id === updatedList.id ? updatedList : l))
     );
     if (authUser) {
-      saveMonthlyListToDb(updatedList);
+      saveMonthlyListToDb(updatedList, currentHousehold?.id);
       updatedList.items.forEach((item) => {
-        saveMonthlyListItemToDb(updatedList.id, item);
+        saveMonthlyListItemToDb(updatedList.id, item, currentHousehold?.id);
       });
       removedItemIds.forEach((removedId) => {
         deleteMonthlyListItemFromDb(updatedList.id, removedId);
@@ -553,7 +556,7 @@ export default function App() {
       showToast(`Producto "${savedProduct.name}" creado en catálogo`);
     }
     if (authUser) {
-      saveBaseProductToDb(savedProduct);
+      saveBaseProductToDb(savedProduct, currentHousehold?.id);
     }
   };
 
@@ -595,7 +598,7 @@ export default function App() {
             };
             setNotifications((prevNotifs) => [notif, ...prevNotifs]);
             if (authUser) {
-              saveNotificationToDb(notif);
+              saveNotificationToDb(notif, currentHousehold?.id);
             }
           }
 
@@ -605,26 +608,32 @@ export default function App() {
       })
     );
     if (authUser && updatedProd) {
-      saveBaseProductToDb(updatedProd);
+      saveBaseProductToDb(updatedProd, currentHousehold?.id);
     }
   };
 
   // Handler: Add Price Record
   const handleAddPriceRecord = (productId: string, record: PriceRecord) => {
+    let updatedWithPrice: BaseProduct | null = null;
     setBaseProducts((prev) =>
       prev.map((p) => {
         if (p.id === productId) {
           const newHistory = [...p.priceHistory, record];
-          return {
+          const updated = {
             ...p,
             currentPrice: record.price,
             priceHistory: newHistory,
             lastUpdated: record.date,
           };
+          updatedWithPrice = updated;
+          return updated;
         }
         return p;
       })
     );
+    if (authUser && updatedWithPrice) {
+      saveBaseProductToDb(updatedWithPrice, currentHousehold?.id);
+    }
     showToast(`Nuevo precio registrado: ${record.price} € (${record.store})`);
   };
 

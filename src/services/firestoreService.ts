@@ -49,11 +49,14 @@ export function sanitizeForFirestore<T>(data: T): T {
 
 // Seed Database if empty: Only creates active monthly list for current month with 0 items, NO mock products or mock members.
 export async function seedInitialDataIfEmpty(
-  currentUser?: User | null
+  currentUser?: User | null,
+  householdId?: string
 ): Promise<void> {
   try {
+    const finalHouseholdId = householdId || DEFAULT_HOUSEHOLD_ID;
     const listsRef = collection(db, "monthly_lists");
-    const listsSnap = await getDocs(listsRef);
+    const q = query(listsRef, where("householdId", "==", finalHouseholdId));
+    const listsSnap = await getDocs(q);
     if (listsSnap.empty) {
       const now = new Date();
       const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -62,7 +65,7 @@ export async function seedInitialDataIfEmpty(
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
       ];
       const title = `Lista de ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-      const listId = `list_${monthKey.replace("-", "_")}`;
+      const listId = `list_${monthKey.replace("-", "_")}_${finalHouseholdId.slice(-6)}`;
 
       await setDoc(doc(db, "monthly_lists", listId), sanitizeForFirestore({
         id: listId,
@@ -70,6 +73,8 @@ export async function seedInitialDataIfEmpty(
         title,
         budget: 400,
         status: "activa",
+        householdId: finalHouseholdId,
+        ownerUid: currentUser?.uid || "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));
@@ -84,6 +89,8 @@ export async function seedInitialDataIfEmpty(
         avatar: "👑",
         color: "#10b981",
         email: currentUser.email || "",
+        householdId: finalHouseholdId,
+        userId: currentUser.uid,
       }), { merge: true });
     }
   } catch (error) {
@@ -154,12 +161,16 @@ export async function purgeMockDataFromFirestore(currentUser: User): Promise<voi
 // ----------------------------------------------------
 
 export function subscribeToFamilyMembers(
-  onData: (members: FamilyMember[]) => void
+  onData: (members: FamilyMember[]) => void,
+  householdId?: string
 ): () => void {
   if (!auth.currentUser) return () => {};
   const colRef = collection(db, "family_members");
+  const q = householdId
+    ? query(colRef, where("householdId", "==", householdId))
+    : colRef;
   return onSnapshot(
-    colRef,
+    q,
     (snapshot) => {
       const members: FamilyMember[] = [];
       snapshot.forEach((d) => {
@@ -174,12 +185,16 @@ export function subscribeToFamilyMembers(
 }
 
 export function subscribeToBaseProducts(
-  onData: (products: BaseProduct[]) => void
+  onData: (products: BaseProduct[]) => void,
+  householdId?: string
 ): () => void {
   if (!auth.currentUser) return () => {};
   const colRef = collection(db, "base_products");
+  const q = householdId
+    ? query(colRef, where("householdId", "==", householdId))
+    : colRef;
   return onSnapshot(
-    colRef,
+    q,
     (snapshot) => {
       const products: BaseProduct[] = [];
       snapshot.forEach((d) => {
@@ -194,12 +209,16 @@ export function subscribeToBaseProducts(
 }
 
 export function subscribeToMonthlyLists(
-  onData: (lists: MonthlyList[]) => void
+  onData: (lists: MonthlyList[]) => void,
+  householdId?: string
 ): () => void {
   if (!auth.currentUser) return () => {};
   const colRef = collection(db, "monthly_lists");
+  const q = householdId
+    ? query(colRef, where("householdId", "==", householdId))
+    : colRef;
   return onSnapshot(
-    colRef,
+    q,
     (snapshot) => {
       const lists: MonthlyList[] = [];
       snapshot.forEach((d) => {
@@ -212,6 +231,8 @@ export function subscribeToMonthlyLists(
           status: data.status,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
+          householdId: data.householdId,
+          ownerUid: data.ownerUid,
           items: [], // Will be filled by subcollection listener
         });
       });
@@ -246,12 +267,16 @@ export function subscribeToMonthlyListItems(
 }
 
 export function subscribeToNotifications(
-  onData: (notifications: NotificationItem[]) => void
+  onData: (notifications: NotificationItem[]) => void,
+  householdId?: string
 ): () => void {
   if (!auth.currentUser) return () => {};
   const colRef = collection(db, "notifications");
+  const q = householdId
+    ? query(colRef, where("householdId", "==", householdId))
+    : colRef;
   return onSnapshot(
-    colRef,
+    q,
     (snapshot) => {
       const notifs: NotificationItem[] = [];
       snapshot.forEach((d) => {
@@ -273,10 +298,22 @@ export function subscribeToNotifications(
 // Mutations
 // ----------------------------------------------------
 
-export async function saveBaseProductToDb(product: BaseProduct): Promise<void> {
+export async function saveBaseProductToDb(
+  product: BaseProduct,
+  householdId?: string
+): Promise<void> {
   const path = `base_products/${product.id}`;
   try {
-    await setDoc(doc(db, "base_products", product.id), sanitizeForFirestore(product));
+    const finalHouseholdId = householdId || product.householdId || DEFAULT_HOUSEHOLD_ID;
+    const finalOwnerUid = product.ownerUid || auth.currentUser?.uid || "";
+    await setDoc(
+      doc(db, "base_products", product.id),
+      sanitizeForFirestore({
+        ...product,
+        householdId: finalHouseholdId,
+        ownerUid: finalOwnerUid,
+      })
+    );
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }
@@ -291,9 +328,14 @@ export async function deleteBaseProductFromDb(productId: string): Promise<void> 
   }
 }
 
-export async function saveMonthlyListToDb(list: MonthlyList): Promise<void> {
+export async function saveMonthlyListToDb(
+  list: MonthlyList,
+  householdId?: string
+): Promise<void> {
   const path = `monthly_lists/${list.id}`;
   try {
+    const finalHouseholdId = householdId || list.householdId || DEFAULT_HOUSEHOLD_ID;
+    const finalOwnerUid = list.ownerUid || auth.currentUser?.uid || "";
     await setDoc(
       doc(db, "monthly_lists", list.id),
       sanitizeForFirestore({
@@ -304,6 +346,8 @@ export async function saveMonthlyListToDb(list: MonthlyList): Promise<void> {
         status: list.status,
         createdAt: list.createdAt,
         updatedAt: list.updatedAt,
+        householdId: finalHouseholdId,
+        ownerUid: finalOwnerUid,
       }),
       { merge: true }
     );
@@ -314,13 +358,18 @@ export async function saveMonthlyListToDb(list: MonthlyList): Promise<void> {
 
 export async function saveMonthlyListItemToDb(
   listId: string,
-  item: MonthlyListItem
+  item: MonthlyListItem,
+  householdId?: string
 ): Promise<void> {
   const path = `monthly_lists/${listId}/items/${item.id}`;
   try {
+    const finalHouseholdId = householdId || item.householdId || DEFAULT_HOUSEHOLD_ID;
     await setDoc(
       doc(db, `monthly_lists/${listId}/items`, item.id),
-      sanitizeForFirestore(item)
+      sanitizeForFirestore({
+        ...item,
+        householdId: finalHouseholdId,
+      })
     );
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -340,13 +389,21 @@ export async function deleteMonthlyListItemFromDb(
 }
 
 export async function saveNotificationToDb(
-  notification: NotificationItem
+  notification: NotificationItem,
+  householdId?: string
 ): Promise<void> {
   const path = `notifications/${notification.id}`;
   try {
+    const finalHouseholdId = householdId || notification.householdId || DEFAULT_HOUSEHOLD_ID;
+    const finalOwnerUid = notification.ownerUid || auth.currentUser?.uid || "";
     await setDoc(
       doc(db, "notifications", notification.id),
-      sanitizeForFirestore(notification)
+      sanitizeForFirestore({
+        ...notification,
+        householdId: finalHouseholdId,
+        ownerUid: finalOwnerUid,
+        userId: auth.currentUser?.uid,
+      })
     );
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -393,6 +450,7 @@ export const DEFAULT_LOCAL_HOUSEHOLD: Household = {
   ownerUid: "",
   ownerEmail: "",
   members: [],
+  memberUids: [],
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 };
@@ -421,7 +479,7 @@ export async function getOrCreateDefaultHousehold(
     if (snap.exists()) {
       const hData = snap.data() as Household;
       // Filter out dummy members without a real google uid
-      const cleanMembers = hData.members.filter(
+      const cleanMembers = (hData.members || []).filter(
         (m) =>
           m.uid !== "mem_juana" &&
           m.uid !== "mem_noelia" &&
@@ -466,12 +524,17 @@ export async function getOrCreateDefaultHousehold(
             : "Mi Hogar Familiar"
           : hData.name;
 
+      const updatedMemberUids = Array.from(
+        new Set(updatedMembers.map((m) => m.uid))
+      );
+
       const updatedHousehold: Household = {
         ...hData,
         name: updatedName,
         ownerUid: updatedOwnerUid,
         ownerEmail: updatedOwnerEmail,
         members: updatedMembers,
+        memberUids: updatedMemberUids,
         updatedAt: new Date().toISOString(),
       };
 
@@ -498,6 +561,7 @@ export async function getOrCreateDefaultHousehold(
       ownerUid: currentUser.uid,
       ownerEmail: currentUser.email || "",
       members: initialMembers,
+      memberUids: [currentUser.uid],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -508,6 +572,7 @@ export async function getOrCreateDefaultHousehold(
       code: DEFAULT_INVITE_CODE,
       householdId: DEFAULT_HOUSEHOLD_ID,
       householdName: defaultHousehold.name,
+      ownerUid: currentUser.uid,
       createdAt: new Date().toISOString(),
     }));
     await batch.commit();
@@ -541,6 +606,7 @@ export async function createNewHousehold(
         joinedAt: new Date().toISOString(),
       },
     ],
+    memberUids: [user.uid],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -552,6 +618,7 @@ export async function createNewHousehold(
       code: inviteCode,
       householdId,
       householdName: newHousehold.name,
+      ownerUid: user.uid,
       createdAt: new Date().toISOString(),
     }));
     await batch.commit();
@@ -590,7 +657,7 @@ export async function joinHouseholdByCode(
     }
 
     const household = hSnap.data() as Household;
-    const existingIndex = household.members.findIndex(
+    const existingIndex = (household.members || []).findIndex(
       (m) =>
         m.uid === user.uid ||
         (user.email && m.email.toLowerCase() === user.email.toLowerCase())
@@ -617,17 +684,23 @@ export async function joinHouseholdByCode(
       joinedAt: new Date().toISOString(),
     };
 
-    const updatedMembers = [...household.members, newMember];
+    const updatedMembers = [...(household.members || []), newMember];
+    const updatedMemberUids = Array.from(
+      new Set([...(household.memberUids || (household.members || []).map((m) => m.uid)), user.uid])
+    );
+
     await setDoc(
       hRef,
       sanitizeForFirestore({
         members: updatedMembers,
+        memberUids: updatedMemberUids,
         updatedAt: new Date().toISOString(),
       }),
       { merge: true }
     );
 
     household.members = updatedMembers;
+    household.memberUids = updatedMemberUids;
 
     return {
       success: true,
@@ -681,7 +754,7 @@ export async function removeMemberFromHousehold(
       Boolean(requester.email && hData.ownerEmail?.toLowerCase() === requester.email.toLowerCase());
     const isAdmin =
       isOwner ||
-      hData.members.some(
+      (hData.members || []).some(
         (m) => m.uid === requester.uid && m.role === "Administrador"
       );
 
@@ -699,14 +772,16 @@ export async function removeMemberFromHousehold(
       };
     }
 
-    const memberToDelete = hData.members.find((m) => m.uid === memberUid);
-    const updatedMembers = hData.members.filter((m) => m.uid !== memberUid);
+    const memberToDelete = (hData.members || []).find((m) => m.uid === memberUid);
+    const updatedMembers = (hData.members || []).filter((m) => m.uid !== memberUid);
+    const updatedMemberUids = updatedMembers.map((m) => m.uid);
 
     await setDoc(
       hRef,
       sanitizeForFirestore({
         ...hData,
         members: updatedMembers,
+        memberUids: updatedMemberUids,
         updatedAt: new Date().toISOString(),
       }),
       { merge: true }

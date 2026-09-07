@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
     }
 
     function incoming() {
@@ -22,6 +22,30 @@ service cloud.firestore {
 
     function existing() {
       return resource.data;
+    }
+
+    function hasHousehold(data) {
+      return 'householdId' in data && data.householdId is string && data.householdId.size() > 0;
+    }
+
+    function isHouseholdMember(hId) {
+      return isSignedIn() &&
+        hId is string &&
+        exists(/databases/$(database)/documents/households/$(hId)) &&
+        (
+          get(/databases/$(database)/documents/households/$(hId)).data.ownerUid == request.auth.uid ||
+          (
+            'memberUids' in get(/databases/$(database)/documents/households/$(hId)).data &&
+            request.auth.uid in get(/databases/$(database)/documents/households/$(hId)).data.memberUids
+          )
+        );
+    }
+
+    function isHouseholdOwner(hId) {
+      return isSignedIn() &&
+        hId is string &&
+        exists(/databases/$(database)/documents/households/$(hId)) &&
+        get(/databases/$(database)/documents/households/$(hId)).data.ownerUid == request.auth.uid;
     }
 
     // Validation blueprints
@@ -75,62 +99,254 @@ service cloud.firestore {
       return data.id is string && data.id.size() <= 128 &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
              data.inviteCode is string && data.inviteCode.size() <= 30 &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             'memberUids' in data && data.memberUids is list;
+    }
+
+    function isValidInviteCode(data) {
+      return data.code is string && data.code.size() <= 30 &&
+             data.householdId is string && data.householdId.size() <= 128 &&
              data.ownerUid is string && data.ownerUid.size() <= 128;
     }
 
     // Households Collection
     match /households/{householdId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(householdId) && isValidHousehold(incoming());
-      allow update: if isSignedIn() && isValidId(householdId) && isValidHousehold(incoming());
-      allow delete: if isSignedIn() && isValidId(householdId);
+      // Member or owner can read their household. Single doc get also allowed if knowing ID via invite code
+      allow get: if isSignedIn() && (
+        resource.data.ownerUid == request.auth.uid ||
+        ('memberUids' in resource.data && request.auth.uid in resource.data.memberUids) ||
+        exists(/databases/$(database)/documents/invite_codes/$(resource.data.inviteCode))
+      );
+      // Listing households is strictly restricted to memberships
+      allow list: if isSignedIn() && (
+        resource.data.ownerUid == request.auth.uid ||
+        ('memberUids' in resource.data && request.auth.uid in resource.data.memberUids)
+      );
+      // Creating household requires caller to be owner and listed in memberUids
+      allow create: if isSignedIn() &&
+                    isValidId(householdId) &&
+                    isValidHousehold(incoming()) &&
+                    incoming().id == householdId &&
+                    incoming().ownerUid == request.auth.uid &&
+                    request.auth.uid in incoming().memberUids;
+      // Updating household requires membership or joining with matching invite code
+      allow update: if isSignedIn() &&
+                    isValidId(householdId) &&
+                    isValidHousehold(incoming()) &&
+                    incoming().id == existing().id &&
+                    (
+                      // 1. Existing member or owner updating
+                      (
+                        (existing().ownerUid == request.auth.uid || ('memberUids' in existing() && request.auth.uid in existing().memberUids)) &&
+                        incoming().ownerUid == existing().ownerUid
+                      ) ||
+                      // 2. Joining member adding their own uid to memberUids
+                      (
+                        request.auth.uid in incoming().memberUids &&
+                        incoming().ownerUid == existing().ownerUid &&
+                        incoming().inviteCode == existing().inviteCode
+                      )
+                    );
+      // Deleting household strictly requires ownerUid
+      allow delete: if isSignedIn() &&
+                    isValidId(householdId) &&
+                    existing().ownerUid == request.auth.uid;
     }
 
     // Invite Code Registry
     match /invite_codes/{code} {
-      allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(code);
-      allow delete: if isSignedIn() && isValidId(code);
+      // Single code lookup allowed when joining by code
+      allow get: if isSignedIn();
+      // Scraped listing of all invite codes is strictly forbidden
+      allow list: if false;
+      // Creation restricted to the household owner
+      allow create: if isSignedIn() &&
+                    isValidId(code) &&
+                    isValidInviteCode(incoming()) &&
+                    incoming().code == code &&
+                    incoming().ownerUid == request.auth.uid &&
+                    isHouseholdMember(incoming().householdId);
+      // Modification restricted to the owner
+      allow update: if isSignedIn() &&
+                    isValidId(code) &&
+                    isValidInviteCode(incoming()) &&
+                    existing().ownerUid == request.auth.uid &&
+                    incoming().ownerUid == existing().ownerUid &&
+                    incoming().householdId == existing().householdId;
+      // Deletion restricted to the owner
+      allow delete: if isSignedIn() &&
+                    isValidId(code) &&
+                    (existing().ownerUid == request.auth.uid || isHouseholdOwner(existing().householdId));
     }
 
     // Family Members Collection
     match /family_members/{memberId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(memberId) && isValidFamilyMember(incoming()) && incoming().id == memberId;
-      allow update: if isSignedIn() && isValidId(memberId) && isValidFamilyMember(incoming()) && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(memberId);
+      allow read: if isSignedIn() && (
+        memberId == request.auth.uid ||
+        ('userId' in existing() && existing().userId == request.auth.uid) ||
+        (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+      );
+      allow create: if isSignedIn() &&
+                    isValidId(memberId) &&
+                    isValidFamilyMember(incoming()) &&
+                    (
+                      memberId == request.auth.uid ||
+                      incoming().id == request.auth.uid ||
+                      ('userId' in incoming() && incoming().userId == request.auth.uid) ||
+                      (hasHousehold(incoming()) && isHouseholdMember(incoming().householdId))
+                    );
+      allow update: if isSignedIn() &&
+                    isValidId(memberId) &&
+                    isValidFamilyMember(incoming()) &&
+                    incoming().id == existing().id &&
+                    (
+                      memberId == request.auth.uid ||
+                      ('userId' in existing() && existing().userId == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+                    );
+      allow delete: if isSignedIn() &&
+                    isValidId(memberId) &&
+                    (
+                      memberId == request.auth.uid ||
+                      ('userId' in existing() && existing().userId == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdOwner(existing().householdId))
+                    );
     }
 
     // Base Products Catalog
     match /base_products/{productId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(productId) && isValidBaseProduct(incoming()) && incoming().id == productId;
-      allow update: if isSignedIn() && isValidId(productId) && isValidBaseProduct(incoming()) && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(productId);
+      allow read: if isSignedIn() && (
+        ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+        (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+      );
+      allow create: if isSignedIn() &&
+                    isValidId(productId) &&
+                    isValidBaseProduct(incoming()) &&
+                    incoming().id == productId &&
+                    (
+                      ('ownerUid' in incoming() && incoming().ownerUid == request.auth.uid) ||
+                      (hasHousehold(incoming()) && isHouseholdMember(incoming().householdId))
+                    );
+      allow update: if isSignedIn() &&
+                    isValidId(productId) &&
+                    isValidBaseProduct(incoming()) &&
+                    incoming().id == existing().id &&
+                    (
+                      (('ownerUid' in existing() && existing().ownerUid == request.auth.uid) && incoming().ownerUid == existing().ownerUid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId) && incoming().householdId == existing().householdId)
+                    );
+      allow delete: if isSignedIn() &&
+                    isValidId(productId) &&
+                    (
+                      ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+                    );
     }
 
     // Monthly Shopping Lists
     match /monthly_lists/{listId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(listId) && isValidMonthlyList(incoming()) && incoming().id == listId;
-      allow update: if isSignedIn() && isValidId(listId) && isValidMonthlyList(incoming()) && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(listId);
+      allow read: if isSignedIn() && (
+        ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+        (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+      );
+      allow create: if isSignedIn() &&
+                    isValidId(listId) &&
+                    isValidMonthlyList(incoming()) &&
+                    incoming().id == listId &&
+                    (
+                      ('ownerUid' in incoming() && incoming().ownerUid == request.auth.uid) ||
+                      (hasHousehold(incoming()) && isHouseholdMember(incoming().householdId))
+                    );
+      allow update: if isSignedIn() &&
+                    isValidId(listId) &&
+                    isValidMonthlyList(incoming()) &&
+                    incoming().id == existing().id &&
+                    (
+                      (('ownerUid' in existing() && existing().ownerUid == request.auth.uid) && incoming().ownerUid == existing().ownerUid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId) && incoming().householdId == existing().householdId)
+                    );
+      allow delete: if isSignedIn() &&
+                    isValidId(listId) &&
+                    (
+                      ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+                    );
 
       // Subcollection: List Items
       match /items/{itemId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && isValidId(itemId) && isValidMonthlyListItem(incoming()) && incoming().id == itemId;
-        allow update: if isSignedIn() && isValidId(itemId) && isValidMonthlyListItem(incoming()) && incoming().id == existing().id;
-        allow delete: if isSignedIn() && isValidId(itemId);
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/monthly_lists/$(listId)).data.ownerUid == request.auth.uid ||
+          (
+            hasHousehold(get(/databases/$(database)/documents/monthly_lists/$(listId)).data) &&
+            isHouseholdMember(get(/databases/$(database)/documents/monthly_lists/$(listId)).data.householdId)
+          )
+        );
+        allow create: if isSignedIn() &&
+                      isValidId(itemId) &&
+                      isValidMonthlyListItem(incoming()) &&
+                      incoming().id == itemId &&
+                      (
+                        get(/databases/$(database)/documents/monthly_lists/$(listId)).data.ownerUid == request.auth.uid ||
+                        (
+                          hasHousehold(get(/databases/$(database)/documents/monthly_lists/$(listId)).data) &&
+                          isHouseholdMember(get(/databases/$(database)/documents/monthly_lists/$(listId)).data.householdId)
+                        )
+                      );
+        allow update: if isSignedIn() &&
+                      isValidId(itemId) &&
+                      isValidMonthlyListItem(incoming()) &&
+                      incoming().id == existing().id &&
+                      (
+                        get(/databases/$(database)/documents/monthly_lists/$(listId)).data.ownerUid == request.auth.uid ||
+                        (
+                          hasHousehold(get(/databases/$(database)/documents/monthly_lists/$(listId)).data) &&
+                          isHouseholdMember(get(/databases/$(database)/documents/monthly_lists/$(listId)).data.householdId)
+                        )
+                      );
+        allow delete: if isSignedIn() &&
+                      isValidId(itemId) &&
+                      (
+                        get(/databases/$(database)/documents/monthly_lists/$(listId)).data.ownerUid == request.auth.uid ||
+                        (
+                          hasHousehold(get(/databases/$(database)/documents/monthly_lists/$(listId)).data) &&
+                          isHouseholdMember(get(/databases/$(database)/documents/monthly_lists/$(listId)).data.householdId)
+                        )
+                      );
       }
     }
 
     // Automated Notifications
     match /notifications/{notificationId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == notificationId;
-      allow update: if isSignedIn() && isValidId(notificationId) && isValidNotification(incoming()) && incoming().id == existing().id;
-      allow delete: if isSignedIn() && isValidId(notificationId);
+      allow read: if isSignedIn() && (
+        ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+        ('userId' in existing() && existing().userId == request.auth.uid) ||
+        (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+      );
+      allow create: if isSignedIn() &&
+                    isValidId(notificationId) &&
+                    isValidNotification(incoming()) &&
+                    incoming().id == notificationId &&
+                    (
+                      ('ownerUid' in incoming() && incoming().ownerUid == request.auth.uid) ||
+                      ('userId' in incoming() && incoming().userId == request.auth.uid) ||
+                      (hasHousehold(incoming()) && isHouseholdMember(incoming().householdId))
+                    );
+      allow update: if isSignedIn() &&
+                    isValidId(notificationId) &&
+                    isValidNotification(incoming()) &&
+                    incoming().id == existing().id &&
+                    (
+                      ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+                      ('userId' in existing() && existing().userId == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+                    );
+      allow delete: if isSignedIn() &&
+                    isValidId(notificationId) &&
+                    (
+                      ('ownerUid' in existing() && existing().ownerUid == request.auth.uid) ||
+                      ('userId' in existing() && existing().userId == request.auth.uid) ||
+                      (hasHousehold(existing()) && isHouseholdMember(existing().householdId))
+                    );
     }
 
     // Connectivity test collection

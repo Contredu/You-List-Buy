@@ -35,6 +35,8 @@ export interface BaseProduct {
   notes?: string;
   barcode?: string;
   lastUpdated: string;
+  householdId?: string;
+  ownerUid?: string;
 }
 
 export interface AddedByEntry {
@@ -61,6 +63,7 @@ export interface MonthlyListItem {
   purchasedAt?: string;
   priority: "alta" | "media" | "baja";
   notes?: string;
+  householdId?: string;
 }
 
 export interface MonthlyList {
@@ -73,6 +76,8 @@ export interface MonthlyList {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  householdId?: string;
+  ownerUid?: string;
 }
 
 export interface FamilyMember {
@@ -82,6 +87,8 @@ export interface FamilyMember {
   avatar: string;
   color: string;
   email?: string;
+  householdId?: string;
+  userId?: string;
 }
 
 export interface NotificationItem {
@@ -94,6 +101,9 @@ export interface NotificationItem {
   relatedProductId?: string;
   relatedMonthKey?: string;
   severity: "info" | "warning" | "danger" | "success";
+  householdId?: string;
+  ownerUid?: string;
+  userId?: string;
 }
 
 export interface SavingsOpportunity {
@@ -140,6 +150,7 @@ export interface Household {
   ownerUid: string;
   ownerEmail: string;
   members: HouseholdMember[];
+  memberUids: string[];
   createdAt: string;
   updatedAt: string;
 }

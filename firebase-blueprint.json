@@ -10,13 +10,15 @@
         "role": { "type": "string", "maxLength": 50 },
         "avatar": { "type": "string", "maxLength": 10 },
         "color": { "type": "string", "maxLength": 20 },
-        "email": { "type": "string", "maxLength": 150 }
+        "email": { "type": "string", "maxLength": 150 },
+        "householdId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "name", "role", "email"]
     },
     "BaseProduct": {
       "title": "BaseProduct",
-      "description": "A base pantry product with inventory levels and pricing",
+      "description": "A base pantry product with inventory levels and pricing scoped to a household",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -31,13 +33,15 @@
         "favoriteStore": { "type": "string", "maxLength": 80 },
         "notes": { "type": "string", "maxLength": 250 },
         "lastUpdated": { "type": "string", "maxLength": 30 },
-        "priceHistory": { "type": "array" }
+        "priceHistory": { "type": "array" },
+        "householdId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "name", "category", "unit", "currentStock", "minStock", "idealStock", "currentPrice"]
     },
     "MonthlyList": {
       "title": "MonthlyList",
-      "description": "A monthly shopping list container with target budget and status",
+      "description": "A monthly shopping list container with target budget and status scoped to a household",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -46,7 +50,9 @@
         "budget": { "type": "number" },
         "status": { "type": "string", "maxLength": 30 },
         "createdAt": { "type": "string", "maxLength": 40 },
-        "updatedAt": { "type": "string", "maxLength": 40 }
+        "updatedAt": { "type": "string", "maxLength": 40 },
+        "householdId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "monthKey", "title", "budget", "status"]
     },
@@ -68,7 +74,8 @@
         "purchasedAt": { "type": "string", "maxLength": 40 },
         "priority": { "type": "string", "maxLength": 20 },
         "notes": { "type": "string", "maxLength": 250 },
-        "addedBy": { "type": "array" }
+        "addedBy": { "type": "array" },
+        "householdId": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "productId", "productName", "category", "unit", "estimatedPrice", "quantity", "purchased"]
     },
@@ -85,13 +92,16 @@
         "read": { "type": "boolean" },
         "relatedProductId": { "type": "string", "maxLength": 128 },
         "relatedMonthKey": { "type": "string", "maxLength": 30 },
-        "severity": { "type": "string", "maxLength": 20 }
+        "severity": { "type": "string", "maxLength": 20 },
+        "householdId": { "type": "string", "maxLength": 128 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "type", "title", "message", "timestamp", "read", "severity"]
     },
     "Household": {
       "title": "Household",
-      "description": "A shared household pantry session space",
+      "description": "A shared household pantry session space with verified owner and member uids",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128 },
@@ -100,22 +110,24 @@
         "ownerUid": { "type": "string", "maxLength": 128 },
         "ownerEmail": { "type": "string", "maxLength": 150 },
         "members": { "type": "array" },
+        "memberUids": { "type": "array" },
         "createdAt": { "type": "string", "maxLength": 40 },
         "updatedAt": { "type": "string", "maxLength": 40 }
       },
-      "required": ["id", "name", "inviteCode", "ownerUid"]
+      "required": ["id", "name", "inviteCode", "ownerUid", "memberUids"]
     },
     "InviteCode": {
       "title": "InviteCode",
-      "description": "Lookup index for household invite codes",
+      "description": "Lookup index for household invite codes with ownerUid protection",
       "type": "object",
       "properties": {
         "code": { "type": "string", "maxLength": 30 },
         "householdId": { "type": "string", "maxLength": 128 },
         "householdName": { "type": "string", "maxLength": 100 },
+        "ownerUid": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string", "maxLength": 40 }
       },
-      "required": ["code", "householdId"]
+      "required": ["code", "householdId", "ownerUid"]
     }
   },
   "firestore": {
