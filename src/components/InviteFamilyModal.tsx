@@ -14,7 +14,7 @@ import {
   UserX,
   Shield,
 } from "lucide-react";
-import { Household, HouseholdMember } from "../types";
+import { Household, HouseholdMember, MonthlyList } from "../types";
 import { User } from "firebase/auth";
 
 interface InviteFamilyModalProps {
@@ -22,6 +22,7 @@ interface InviteFamilyModalProps {
   onClose: () => void;
   household: Household | null;
   authUser: User | null;
+  activeList?: MonthlyList | null;
   onJoinByCode: (code: string) => Promise<{ success: boolean; message: string }>;
   onCreateNewHousehold: (name: string) => Promise<void>;
   onRemoveMember: (memberUid: string) => Promise<void>;
@@ -33,11 +34,15 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   onClose,
   household,
   authUser,
+  activeList,
   onJoinByCode,
   onCreateNewHousehold,
   onRemoveMember,
   onShowToast,
 }) => {
+  const [inviteType, setInviteType] = useState<"list" | "household">(
+    activeList?.inviteCode ? "list" : "household"
+  );
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [joinCodeInput, setJoinCodeInput] = useState("");
@@ -49,6 +54,14 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [memberUidConfirmingDelete, setMemberUidConfirmingDelete] = useState<string | null>(null);
   const [isDeletingMember, setIsDeletingMember] = useState(false);
+
+  React.useEffect(() => {
+    if (activeList?.inviteCode) {
+      setInviteType("list");
+    } else {
+      setInviteType("household");
+    }
+  }, [activeList?.id, activeList?.inviteCode]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -77,19 +90,24 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
       currentMember?.role === "Administrador")
   );
 
-  const currentInviteCode = household?.inviteCode || "FAM-2026";
-  const shareUrl = typeof window !== "undefined"
-    ? `${window.location.origin}${window.location.pathname}?join=${currentInviteCode}`
-    : `https://app.com/?join=${currentInviteCode}`;
+  const activeCode =
+    inviteType === "list" && activeList?.inviteCode
+      ? activeList.inviteCode
+      : household?.inviteCode || "FAM-2026";
+
+  const shareUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${window.location.pathname}?join=${activeCode}`
+      : `https://app.com/?join=${activeCode}`;
 
   const handleCopyCode = async () => {
     try {
-      await navigator.clipboard.writeText(currentInviteCode);
+      await navigator.clipboard.writeText(activeCode);
       setCopiedCode(true);
-      onShowToast(`Código ${currentInviteCode} copiado al portapapeles`);
+      onShowToast(`Código ${activeCode} copiado al portapapeles`);
       setTimeout(() => setCopiedCode(false), 2500);
     } catch {
-      onShowToast(`Código: ${currentInviteCode}`);
+      onShowToast(`Código: ${activeCode}`);
     }
   };
 
@@ -105,9 +123,13 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
   };
 
   const handleShareWhatsApp = () => {
+    const listLabel =
+      inviteType === "list" && activeList?.title
+        ? `a la lista "${activeList.title}"`
+        : `a nuestro hogar "${household?.name || "Familiar"}"`;
     const text = encodeURIComponent(
-      `¡Hola! Únete a nuestra lista de compras y despensa familiar compartida en tiempo real.\n\n` +
-      `Código de sesión: ${currentInviteCode}\n` +
+      `¡Hola! Únete ${listLabel} en nuestra app de compras y despensa compartida en tiempo real.\n\n` +
+      `Código de sesión: ${activeCode}\n` +
       `Enlace directo: ${shareUrl}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, "_blank");
@@ -198,16 +220,48 @@ export const InviteFamilyModal: React.FC<InviteFamilyModalProps> = ({
             </div>
           </div>
 
+          {/* Invite Scope Selector if activeList is present */}
+          {activeList && (
+            <div className="flex rounded-xl bg-stone-100 p-1 border border-stone-200">
+              <button
+                type="button"
+                onClick={() => setInviteType("list")}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  inviteType === "list"
+                    ? "bg-white text-emerald-800 shadow-xs border border-emerald-200/60"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+              >
+                📋 Código de esta Lista ({activeList.title})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteType("household")}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  inviteType === "household"
+                    ? "bg-white text-emerald-800 shadow-xs border border-emerald-200/60"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+              >
+                🏠 Código del Hogar Completo
+              </button>
+            </div>
+          )}
+
           {/* Big Invite Code Box */}
           <div className="bg-stone-50 border-2 border-dashed border-emerald-300 rounded-2xl p-5 text-center">
             <span className="text-xs uppercase tracking-widest text-stone-500 font-semibold block mb-1">
-              Código de Invitación del Hogar
+              {inviteType === "list" && activeList
+                ? `Código Único para: ${activeList.title}`
+                : `Código de Invitación del Hogar: ${household?.name || "Mi Hogar"}`}
             </span>
             <div className="font-mono text-3xl sm:text-4xl font-black text-emerald-800 tracking-wider my-2 select-all">
-              {currentInviteCode}
+              {activeCode}
             </div>
             <p className="text-xs text-stone-500 max-w-sm mx-auto mb-4">
-              Cualquiera que introduzca este código en su móvil se unirá automáticamente a vuestra sesión de compra.
+              {inviteType === "list" && activeList
+                ? "Cada lista creada genera su propio código aleatorio exclusivo para compartirla con tus familiares de forma separada."
+                : "Cualquiera que introduzca este código en su móvil se unirá automáticamente a vuestra sesión familiar."}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-2">

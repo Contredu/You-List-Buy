@@ -20,10 +20,36 @@ export const NewMonthModal: React.FC<NewMonthModalProps> = ({
   onCreateMonth,
   existingMonthKeys,
 }) => {
-  const [selectedMonthKey, setSelectedMonthKey] = useState("2026-10");
-  const [customTitle, setCustomTitle] = useState("Octubre 2026");
+  const getNextMonthInfo = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const monthNames = [
+      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+    return {
+      key: `${y}-${m}`,
+      title: `Compra de ${monthNames[d.getMonth()]} ${y}`,
+    };
+  };
+
+  const [selectedMonthKey, setSelectedMonthKey] = useState(() => getNextMonthInfo().key);
+  const [customTitle, setCustomTitle] = useState(() => getNextMonthInfo().title);
+  const [isTitleCustomized, setIsTitleCustomized] = useState(false);
   const [budget, setBudget] = useState("400");
   const [autoImportLowStock, setAutoImportLowStock] = useState(true);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      const nextInfo = getNextMonthInfo();
+      setSelectedMonthKey(nextInfo.key);
+      setCustomTitle(nextInfo.title);
+      setIsTitleCustomized(false);
+      setBudget("400");
+    }
+  }, [isOpen]);
 
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -39,19 +65,22 @@ export const NewMonthModal: React.FC<NewMonthModalProps> = ({
 
   const handleMonthKeyChange = (key: string) => {
     setSelectedMonthKey(key);
-    const [y, m] = key.split("-");
-    const monthNames = [
-      "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-      "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-    ];
-    const name = monthNames[parseInt(m, 10) - 1] || key;
-    setCustomTitle(`${name} ${y}`);
+    if (!isTitleCustomized) {
+      const [y, m] = key.split("-");
+      const monthNames = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+      ];
+      const name = monthNames[parseInt(m, 10) - 1] || key;
+      setCustomTitle(`Compra de ${name} ${y}`);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const budgetNum = parseFloat(budget) || 400;
-    onCreateMonth(selectedMonthKey, customTitle, budgetNum, autoImportLowStock);
+    const finalTitle = customTitle.trim() || `Lista ${selectedMonthKey}`;
+    onCreateMonth(selectedMonthKey, finalTitle, budgetNum, autoImportLowStock);
     onClose();
   };
 
@@ -111,7 +140,10 @@ export const NewMonthModal: React.FC<NewMonthModalProps> = ({
               type="text"
               required
               value={customTitle}
-              onChange={(e) => setCustomTitle(e.target.value)}
+              onChange={(e) => {
+                setCustomTitle(e.target.value);
+                setIsTitleCustomized(true);
+              }}
               className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-stone-200 bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>

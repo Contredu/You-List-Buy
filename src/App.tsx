@@ -57,6 +57,8 @@ import {
   subscribeToHousehold,
   removeMemberFromHousehold,
   updateHouseholdMemberProfile,
+  generateRandomInviteCode,
+  deleteMonthlyListFromDb,
   DEFAULT_LOCAL_HOUSEHOLD,
 } from "./services/firestoreService";
 import {
@@ -67,6 +69,7 @@ import {
   INITIAL_MONTHLY_LISTS,
 } from "./data/initialData";
 import { Navbar } from "./components/Navbar";
+import { MonthlyListsHubView } from "./components/MonthlyListsHubView";
 import { MonthlyListView } from "./components/MonthlyListView";
 import { BaseCatalogView } from "./components/BaseCatalogView";
 import { AIBudgetAdvisorView } from "./components/AIBudgetAdvisorView";
@@ -83,10 +86,11 @@ import { InviteFamilyModal } from "./components/InviteFamilyModal";
 import { UserProfileModal } from "./components/UserProfileModal";
 
 export default function App() {
-  // Navigation State
+  // Navigation State - Defaults to "lists" (Centro de Listas Mensuales) upon entering
   const [currentTab, setCurrentTab] = useState<
-    "list" | "catalog" | "ai" | "reports" | "notifications"
-  >("list");
+    "lists" | "list" | "catalog" | "ai" | "reports" | "notifications"
+  >("lists");
+  const [activeListId, setActiveListId] = useState<string | null>(null);
 
   // User Profile Modal State
   const [isUserProfileOpen, setIsUserProfileOpen] = useState(false);
@@ -405,10 +409,13 @@ export default function App() {
 
   // Find active monthly list
   const activeList =
-    monthlyLists.find((l) => l.monthKey === activeMonthKey) || monthlyLists[0];
+    monthlyLists.find((l) => (activeListId ? l.id === activeListId : l.monthKey === activeMonthKey)) ||
+    monthlyLists.find((l) => l.monthKey === activeMonthKey) ||
+    monthlyLists[0] ||
+    null;
 
   // Past lists for AI and comparison
-  const pastLists = monthlyLists.filter((l) => l.monthKey !== activeMonthKey);
+  const pastLists = monthlyLists.filter((l) => (activeList ? l.id !== activeList.id : l.monthKey !== activeMonthKey));
 
   // Low stock calculation
   const lowStockProducts = baseProducts.filter(
@@ -771,26 +778,59 @@ export default function App() {
       });
     }
 
+    const listInviteCode = generateRandomInviteCode();
+    const uniqueListId = `list_${monthKey.replace("-", "_")}_${Date.now().toString(36)}`;
+    const finalHouseholdId =
+      currentHousehold?.id ||
+      (authUser ? `household_${authUser.uid}` : "household_local");
+    const finalTitle = title.trim() || `Lista de ${monthKey}`;
+
     const newList: MonthlyList = {
-      id: `list_${monthKey}`,
+      id: uniqueListId,
       monthKey,
-      title,
+      title: finalTitle,
       budget,
       status: "planificacion",
       items: initialItems,
+      householdId: finalHouseholdId,
+      ownerUid: authUser?.uid || "",
+      inviteCode: listInviteCode,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
-    setMonthlyLists((prev) => [newList, ...prev]);
+    setMonthlyLists((prev) => [newList, ...prev.filter((l) => l.id !== newList.id)]);
     setActiveMonthKey(monthKey);
+    setActiveListId(newList.id);
     setCurrentTab("list");
-    showToast(`Lista de ${title} creada con presupuesto de ${budget} €`);
+    showToast(`Lista "${finalTitle}" creada con éxito`);
     if (authUser) {
-      saveMonthlyListToDb(newList);
+      saveMonthlyListToDb(newList, finalHouseholdId);
       initialItems.forEach((item) => {
-        saveMonthlyListItemToDb(newList.id, item);
+        saveMonthlyListItemToDb(newList.id, item, finalHouseholdId);
       });
+    }
+  };
+
+  const handleDeleteList = async (listId: string) => {
+    const listToDelete = monthlyLists.find((l) => l.id === listId);
+    if (!listToDelete) return;
+
+    setMonthlyLists((prev) => prev.filter((l) => l.id !== listId));
+    if (activeListId === listId || activeMonthKey === listToDelete.monthKey) {
+      const remaining = monthlyLists.filter((l) => l.id !== listId);
+      if (remaining.length > 0) {
+        setActiveListId(remaining[0].id);
+        setActiveMonthKey(remaining[0].monthKey);
+      }
+    }
+    showToast(`Lista "${listToDelete.title}" eliminada`);
+    if (authUser) {
+      try {
+        await deleteMonthlyListFromDb(listId);
+      } catch (err) {
+        console.error("Error al eliminar lista:", err);
+      }
     }
   };
 
@@ -804,6 +844,10 @@ export default function App() {
           const res = await joinHouseholdByCode(code, userCred.user);
           if (res.success && res.household) {
             setCurrentHousehold(res.household);
+            if (res.targetListId) {
+              setActiveListId(res.targetListId);
+              setCurrentTab("list");
+            }
           }
           return res;
         }
@@ -816,6 +860,10 @@ export default function App() {
     const res = await joinHouseholdByCode(code, authUser);
     if (res.success && res.household) {
       setCurrentHousehold(res.household);
+      if (res.targetListId) {
+        setActiveListId(res.targetListId);
+        setCurrentTab("list");
+      }
     }
     return res;
   };
@@ -924,7 +972,12 @@ export default function App() {
         activeMonthKey={activeMonthKey}
         onSelectMonth={(k) => {
           setActiveMonthKey(k);
-          showToast(`Mes activo cambiado`);
+          const found = monthlyLists.find((l) => l.monthKey === k);
+          if (found) {
+            setActiveListId(found.id);
+          }
+          setCurrentTab("list");
+          showToast(`Lista seleccionada`);
         }}
         onOpenNewMonthModal={() => setIsNewMonthOpen(true)}
         onOpenSupermarketMode={() => setIsSupermarketModeOpen(true)}
@@ -966,6 +1019,32 @@ export default function App() {
 
       {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {currentTab === "lists" && (
+          <MonthlyListsHubView
+            monthlyLists={monthlyLists}
+            activeListId={activeListId || activeList?.id || null}
+            activeMonthKey={activeMonthKey}
+            onSelectList={(list) => {
+              setActiveListId(list.id);
+              setActiveMonthKey(list.monthKey);
+              setCurrentTab("list");
+            }}
+            onOpenNewMonthModal={() => setIsNewMonthOpen(true)}
+            onOpenInviteModal={(list) => {
+              if (list) {
+                setActiveListId(list.id);
+                setActiveMonthKey(list.monthKey);
+              }
+              setIsInviteModalOpen(true);
+            }}
+            onDeleteList={handleDeleteList}
+            currentMember={currentMember}
+            household={currentHousehold}
+            authUser={authUser}
+            onShowToast={showToast}
+          />
+        )}
+
         {currentTab === "list" && activeList && (
           <MonthlyListView
             activeList={activeList}
@@ -979,6 +1058,7 @@ export default function App() {
             onOpenSupermarketMode={() => setIsSupermarketModeOpen(true)}
             onAutoImportLowStock={handleAutoImportLowStock}
             lowStockCount={lowStockProducts.length}
+            onBackToLists={() => setCurrentTab("lists")}
             onOpenInviteModal={() => setIsInviteModalOpen(true)}
             onOpenNewProductModal={() => {
               setProductToEdit(null);
@@ -1125,6 +1205,7 @@ export default function App() {
         onClose={() => setIsInviteModalOpen(false)}
         household={currentHousehold}
         authUser={authUser}
+        activeList={activeList}
         onJoinByCode={handleJoinHouseholdByCode}
         onCreateNewHousehold={handleCreateNewHousehold}
         onRemoveMember={handleRemoveMember}

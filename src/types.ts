@@ -78,6 +78,7 @@ export interface MonthlyList {
   updatedAt: string;
   householdId?: string;
   ownerUid?: string;
+  inviteCode?: string; // Código de invitación único aleatorio para esta lista
 }
 
 export interface FamilyMember {

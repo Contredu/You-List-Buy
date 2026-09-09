@@ -32,6 +32,7 @@ interface MonthlyListViewProps {
   onOpenSupermarketMode: () => void;
   onAutoImportLowStock: () => void;
   lowStockCount: number;
+  onBackToLists?: () => void;
   onOpenInviteModal?: () => void;
   onOpenNewProductModal?: () => void;
   householdName?: string;
@@ -47,6 +48,7 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
   onOpenSupermarketMode,
   onAutoImportLowStock,
   lowStockCount,
+  onBackToLists,
   onOpenInviteModal,
   onOpenNewProductModal,
   householdName,
@@ -209,6 +211,16 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
       <div className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-stone-100">
           <div>
+            {onBackToLists && (
+              <button
+                type="button"
+                onClick={onBackToLists}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 hover:text-emerald-700 transition-colors mb-2 cursor-pointer"
+              >
+                <span>←</span>
+                <span>Volver a Mis Listas</span>
+              </button>
+            )}
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-bold text-stone-900">
                 {activeList.title}
@@ -232,22 +244,28 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
             <p className="text-xs sm:text-sm text-stone-500 mt-1">
               Lista de compras compartida de la familia. Añade productos y cantidades acumulativas.
             </p>
-            {householdInviteCode && (
-              <div className="flex items-center gap-2 mt-1.5 text-xs text-stone-600">
-                <span className="inline-flex items-center gap-1 font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                  <Users className="w-3 h-3 text-emerald-600" />
-                  {householdName || "Hogar Familiar"} (Código: {householdInviteCode})
+            <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+              {activeList.inviteCode && (
+                <span className="inline-flex items-center gap-1.5 font-mono font-bold text-emerald-900 bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-300">
+                  <span>🔑 Código de esta lista:</span>
+                  <span className="tracking-wider">{activeList.inviteCode}</span>
                 </span>
-                {onOpenInviteModal && (
-                  <button
-                    onClick={onOpenInviteModal}
-                    className="text-emerald-700 hover:text-emerald-900 font-semibold underline text-[11px] cursor-pointer"
-                  >
-                    Invitar a otros
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+              {householdInviteCode && (
+                <span className="inline-flex items-center gap-1 font-medium text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200">
+                  <Users className="w-3 h-3 text-stone-500" />
+                  {householdName || "Hogar"} ({householdInviteCode})
+                </span>
+              )}
+              {onOpenInviteModal && (
+                <button
+                  onClick={onOpenInviteModal}
+                  className="text-emerald-700 hover:text-emerald-900 font-semibold underline text-xs cursor-pointer ml-1"
+                >
+                  Compartir código con familiares
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Quick Action Buttons */}

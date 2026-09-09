@@ -24,8 +24,8 @@ import { formatCurrency, formatMonthTitle } from "../utils/helpers";
 import { User } from "firebase/auth";
 
 interface NavbarProps {
-  currentTab: "list" | "catalog" | "ai" | "reports" | "notifications";
-  onSelectTab: (tab: "list" | "catalog" | "ai" | "reports" | "notifications") => void;
+  currentTab: "lists" | "list" | "catalog" | "ai" | "reports" | "notifications";
+  onSelectTab: (tab: "lists" | "list" | "catalog" | "ai" | "reports" | "notifications") => void;
   familyMembers: FamilyMember[];
   currentMember: FamilyMember;
   onSelectMember: (member: FamilyMember) => void;
@@ -114,8 +114,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title="Cambiar mes de compra"
               >
                 <Calendar className="w-4 h-4 text-emerald-600" />
-                <span className="font-semibold">
-                  {formatMonthTitle(activeMonthKey)}
+                <span className="font-semibold truncate max-w-[140px] sm:max-w-[200px]">
+                  {activeList?.title || formatMonthTitle(activeMonthKey)}
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
               </button>
@@ -403,6 +403,28 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto py-2 border-t border-stone-100 no-scrollbar">
+          <button
+            id="tab-monthly-hub"
+            onClick={() => onSelectTab("lists")}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all shrink-0 cursor-pointer ${
+              currentTab === "lists"
+                ? "bg-emerald-600 text-white shadow-xs"
+                : "text-stone-600 hover:bg-stone-100"
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Mis Listas</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                currentTab === "lists"
+                  ? "bg-emerald-800/80 text-emerald-100"
+                  : "bg-stone-200 text-stone-700"
+              }`}
+            >
+              {monthlyLists.length}
+            </span>
+          </button>
+
           <button
             id="tab-monthly-list"
             onClick={() => onSelectTab("list")}

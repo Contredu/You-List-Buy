@@ -53,7 +53,9 @@ export async function seedInitialDataIfEmpty(
   householdId?: string
 ): Promise<void> {
   try {
-    const finalHouseholdId = householdId || DEFAULT_HOUSEHOLD_ID;
+    const finalHouseholdId =
+      householdId ||
+      (currentUser ? `household_${currentUser.uid}` : DEFAULT_HOUSEHOLD_ID);
     const listsRef = collection(db, "monthly_lists");
     const q = query(listsRef, where("householdId", "==", finalHouseholdId));
     const listsSnap = await getDocs(q);
@@ -65,9 +67,11 @@ export async function seedInitialDataIfEmpty(
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
       ];
       const title = `Lista de ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
-      const listId = `list_${monthKey.replace("-", "_")}_${finalHouseholdId.slice(-6)}`;
+      const listId = `list_${monthKey.replace("-", "_")}_${Date.now().toString(36)}`;
+      const listInviteCode = generateRandomInviteCode();
 
-      await setDoc(doc(db, "monthly_lists", listId), sanitizeForFirestore({
+      const batch = writeBatch(db);
+      batch.set(doc(db, "monthly_lists", listId), sanitizeForFirestore({
         id: listId,
         monthKey,
         title,
@@ -75,9 +79,24 @@ export async function seedInitialDataIfEmpty(
         status: "activa",
         householdId: finalHouseholdId,
         ownerUid: currentUser?.uid || "",
+        inviteCode: listInviteCode,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }));
+
+      if (currentUser?.uid) {
+        batch.set(doc(db, "invite_codes", listInviteCode), sanitizeForFirestore({
+          code: listInviteCode,
+          householdId: finalHouseholdId,
+          householdName: title,
+          listId,
+          listTitle: title,
+          ownerUid: currentUser.uid,
+          createdAt: new Date().toISOString(),
+        }));
+      }
+
+      await batch.commit();
     }
 
     if (currentUser) {
@@ -224,18 +243,24 @@ export function subscribeToMonthlyLists(
       snapshot.forEach((d) => {
         const data = d.data();
         lists.push({
-          id: data.id,
+          id: data.id || d.id,
           monthKey: data.monthKey,
           title: data.title,
           budget: data.budget,
           status: data.status,
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
+          notes: data.notes || "",
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: data.updatedAt || new Date().toISOString(),
           householdId: data.householdId,
           ownerUid: data.ownerUid,
+          inviteCode: data.inviteCode,
           items: [], // Will be filled by subcollection listener
         });
       });
+      // Sort newest created list first
+      lists.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
       onData(lists);
     },
     (error) => {
@@ -334,9 +359,15 @@ export async function saveMonthlyListToDb(
 ): Promise<void> {
   const path = `monthly_lists/${list.id}`;
   try {
-    const finalHouseholdId = householdId || list.householdId || DEFAULT_HOUSEHOLD_ID;
+    const finalHouseholdId =
+      householdId ||
+      list.householdId ||
+      (auth.currentUser ? `household_${auth.currentUser.uid}` : DEFAULT_HOUSEHOLD_ID);
     const finalOwnerUid = list.ownerUid || auth.currentUser?.uid || "";
-    await setDoc(
+    const listInviteCode = list.inviteCode || generateRandomInviteCode();
+
+    const batch = writeBatch(db);
+    batch.set(
       doc(db, "monthly_lists", list.id),
       sanitizeForFirestore({
         id: list.id,
@@ -344,15 +375,48 @@ export async function saveMonthlyListToDb(
         title: list.title,
         budget: list.budget,
         status: list.status,
+        notes: list.notes || "",
         createdAt: list.createdAt,
         updatedAt: list.updatedAt,
         householdId: finalHouseholdId,
         ownerUid: finalOwnerUid,
+        inviteCode: listInviteCode,
       }),
       { merge: true }
     );
+
+    if (finalOwnerUid) {
+      batch.set(
+        doc(db, "invite_codes", listInviteCode),
+        sanitizeForFirestore({
+          code: listInviteCode,
+          householdId: finalHouseholdId,
+          householdName: list.title,
+          listId: list.id,
+          listTitle: list.title,
+          ownerUid: finalOwnerUid,
+          createdAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+    }
+
+    await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteMonthlyListFromDb(listId: string): Promise<void> {
+  const path = `monthly_lists/${listId}`;
+  try {
+    const itemsSnap = await getDocs(collection(db, `${path}/items`));
+    const batch = writeBatch(db);
+    itemsSnap.forEach((d) => batch.delete(d.ref));
+    batch.delete(doc(db, "monthly_lists", listId));
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
 
@@ -467,119 +531,78 @@ export function generateRandomInviteCode(): string {
 export async function getOrCreateDefaultHousehold(
   user?: User | null
 ): Promise<Household> {
-  // If no user or currentUser is active, return local household without hitting Firestore
+  // If no user is authenticated, return local household without hitting Firestore
   const currentUser = user || auth.currentUser;
   if (!currentUser) {
     return DEFAULT_LOCAL_HOUSEHOLD;
   }
 
-  const hRef = doc(db, "households", DEFAULT_HOUSEHOLD_ID);
+  const userHouseholdId = `household_${currentUser.uid}`;
+
   try {
-    const snap = await getDoc(hRef);
-    if (snap.exists()) {
-      const hData = snap.data() as Household;
-      // Filter out dummy members without a real google uid
-      const cleanMembers = (hData.members || []).filter(
-        (m) =>
-          m.uid !== "mem_juana" &&
-          m.uid !== "mem_noelia" &&
-          m.uid !== "mem_1" &&
-          m.uid !== "mem_2" &&
-          m.uid !== "mem_3"
-      );
-
-      // Check if current authenticated user is listed
-      const hasMember = cleanMembers.some(
-        (m) =>
-          m.uid === currentUser.uid ||
-          (currentUser.email && m.email.toLowerCase() === currentUser.email?.toLowerCase())
-      );
-
-      let updatedMembers = cleanMembers;
-      if (!hasMember) {
-        const newMember: HouseholdMember = {
-          uid: currentUser.uid,
-          name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
-          email: currentUser.email || "",
-          role: cleanMembers.length === 0 ? "Administrador" : "Familiar",
-          avatar: cleanMembers.length === 0 ? "👑" : "👤",
-          joinedAt: new Date().toISOString(),
-        };
-        updatedMembers = [...cleanMembers, newMember];
-      }
-
-      // If owner was dummy or missing, assign to current user
-      const updatedOwnerUid =
-        !hData.ownerUid || hData.ownerUid.startsWith("mem_")
-          ? currentUser.uid
-          : hData.ownerUid;
-      const updatedOwnerEmail =
-        !hData.ownerEmail || hData.ownerEmail.includes("example.com")
-          ? currentUser.email || ""
-          : hData.ownerEmail;
-      const updatedName =
-        hData.name === "Hogar Familia Contreras"
-          ? currentUser.displayName
-            ? `Hogar de ${currentUser.displayName}`
-            : "Mi Hogar Familiar"
-          : hData.name;
-
-      const updatedMemberUids = Array.from(
-        new Set(updatedMembers.map((m) => m.uid))
-      );
-
-      const updatedHousehold: Household = {
-        ...hData,
-        name: updatedName,
-        ownerUid: updatedOwnerUid,
-        ownerEmail: updatedOwnerEmail,
-        members: updatedMembers,
-        memberUids: updatedMemberUids,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await setDoc(hRef, sanitizeForFirestore(updatedHousehold), { merge: true });
-      return updatedHousehold;
+    // 1. Check if user is already a member of an existing household in Firestore
+    const colRef = collection(db, "households");
+    const qMember = query(
+      colRef,
+      where("memberUids", "array-contains", currentUser.uid)
+    );
+    const memberSnap = await getDocs(qMember);
+    if (!memberSnap.empty) {
+      return memberSnap.docs[0].data() as Household;
     }
 
-    // Create fresh default household with ONLY the authenticated user
-    const initialMembers: HouseholdMember[] = [
-      {
-        uid: currentUser.uid,
-        name: currentUser.displayName || currentUser.email?.split("@")[0] || "Administrador",
-        email: currentUser.email || "",
-        role: "Administrador",
-        avatar: "👑",
-        joinedAt: new Date().toISOString(),
-      },
-    ];
+    // 2. Check if user already owns a household with their direct user ID
+    const directDoc = await getDoc(doc(db, "households", userHouseholdId));
+    if (directDoc.exists()) {
+      return directDoc.data() as Household;
+    }
 
-    const defaultHousehold: Household = {
-      id: DEFAULT_HOUSEHOLD_ID,
-      name: currentUser.displayName ? `Hogar de ${currentUser.displayName}` : "Mi Hogar Familiar",
-      inviteCode: DEFAULT_INVITE_CODE,
+    // 3. New registered user: create their OWN personal household where they are Administrator
+    const inviteCode = generateRandomInviteCode();
+    const newHousehold: Household = {
+      id: userHouseholdId,
+      name: currentUser.displayName
+        ? `Hogar de ${currentUser.displayName}`
+        : "Mi Hogar Familiar",
+      inviteCode,
       ownerUid: currentUser.uid,
       ownerEmail: currentUser.email || "",
-      members: initialMembers,
+      members: [
+        {
+          uid: currentUser.uid,
+          name:
+            currentUser.displayName ||
+            currentUser.email?.split("@")[0] ||
+            "Administrador",
+          email: currentUser.email || "",
+          role: "Administrador",
+          avatar: "👑",
+          joinedAt: new Date().toISOString(),
+        },
+      ],
       memberUids: [currentUser.uid],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     const batch = writeBatch(db);
-    batch.set(hRef, sanitizeForFirestore(defaultHousehold));
-    batch.set(doc(db, "invite_codes", DEFAULT_INVITE_CODE), sanitizeForFirestore({
-      code: DEFAULT_INVITE_CODE,
-      householdId: DEFAULT_HOUSEHOLD_ID,
-      householdName: defaultHousehold.name,
-      ownerUid: currentUser.uid,
-      createdAt: new Date().toISOString(),
-    }));
+    batch.set(doc(db, "households", userHouseholdId), sanitizeForFirestore(newHousehold));
+    batch.set(
+      doc(db, "invite_codes", inviteCode),
+      sanitizeForFirestore({
+        code: inviteCode,
+        householdId: userHouseholdId,
+        householdName: newHousehold.name,
+        ownerUid: currentUser.uid,
+        createdAt: new Date().toISOString(),
+      })
+    );
     await batch.commit();
 
-    return defaultHousehold;
+    return newHousehold;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, "households");
+    return DEFAULT_LOCAL_HOUSEHOLD;
   }
 }
 
@@ -587,7 +610,7 @@ export async function createNewHousehold(
   name: string,
   user: User
 ): Promise<Household> {
-  const householdId = `household_${Date.now()}`;
+  const householdId = `household_${user.uid}_${Date.now().toString(36)}`;
   const inviteCode = generateRandomInviteCode();
 
   const newHousehold: Household = {
@@ -625,6 +648,7 @@ export async function createNewHousehold(
     return newHousehold;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `households/${householdId}`);
+    return newHousehold;
   }
 }
 
@@ -632,7 +656,7 @@ export async function joinHouseholdByCode(
   rawCode: string,
   user: User,
   customName?: string
-): Promise<{ success: boolean; household?: Household; message: string }> {
+): Promise<{ success: boolean; household?: Household; targetListId?: string; message: string }> {
   const cleanCode = rawCode.trim().toUpperCase();
   try {
     const codeDocRef = doc(db, "invite_codes", cleanCode);
@@ -645,14 +669,15 @@ export async function joinHouseholdByCode(
       };
     }
 
-    const { householdId } = codeSnap.data();
+    const codeData = codeSnap.data();
+    const { householdId, listId, listTitle } = codeData;
     const hRef = doc(db, "households", householdId);
     const hSnap = await getDoc(hRef);
 
     if (!hSnap.exists()) {
       return {
         success: false,
-        message: "No se encontró el espacio familiar asociado.",
+        message: "No se encontró el espacio familiar asociado a este código.",
       };
     }
 
@@ -667,10 +692,12 @@ export async function joinHouseholdByCode(
       return {
         success: true,
         household,
+        targetListId: listId,
         message: `¡Ya formas parte de "${household.name}"! Sesión conectada.`,
       };
     }
 
+    // Joining user is added as Familiar, preserving original Admin!
     const newMember: HouseholdMember = {
       uid: user.uid,
       name:
@@ -705,10 +732,15 @@ export async function joinHouseholdByCode(
     return {
       success: true,
       household,
-      message: `¡Te has unido con éxito a "${household.name}"! Ahora compartís la misma lista en vivo.`,
+      targetListId: listId,
+      message: `¡Te has unido con éxito a "${household.name}"${listTitle ? ` para la lista "${listTitle}"` : ""}!`,
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, "invite_codes");
+    return {
+      success: false,
+      message: "No se pudo unir al hogar. Revisa los permisos o tu conexión.",
+    };
   }
 }
 
