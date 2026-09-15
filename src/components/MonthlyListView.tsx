@@ -269,16 +269,16 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
           </div>
 
           {/* Quick Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
             {onOpenInviteModal && (
               <button
                 id="invite-family-list-header-btn"
                 onClick={onOpenInviteModal}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
                 title="Invitar a familiares a estar en esta misma sesión de compra"
               >
-                <Users className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Invitar a la Sesión</span>
+                <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">Invitar Familia</span>
               </button>
             )}
 
@@ -286,29 +286,29 @@ export const MonthlyListView: React.FC<MonthlyListViewProps> = ({
               <button
                 id="auto-import-low-stock-btn"
                 onClick={onAutoImportLowStock}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-semibold transition-colors cursor-pointer w-full sm:w-auto"
                 title="Añadir automáticamente todos los productos con stock bajo"
               >
-                <ArrowDownToLine className="w-3.5 h-3.5" />
-                <span>Añadir {lowStockCount} con Stock Bajo</span>
+                <ArrowDownToLine className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Stock Bajo ({lowStockCount})</span>
               </button>
             )}
 
             <button
               id="open-supermarket-mode-btn"
               onClick={onOpenSupermarketMode}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
             >
-              <Store className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Modo Supermercado</span>
+              <Store className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">Modo Super</span>
             </button>
 
             <button
               id="add-product-to-list-btn"
               onClick={onOpenAddToListModal}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer w-full sm:w-auto col-span-2 sm:col-span-1"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4 shrink-0" />
               <span>Añadir Producto</span>
             </button>
           </div>

@@ -141,11 +141,11 @@ export const MonthlyListsHubView: React.FC<MonthlyListsHubViewProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
             <button
               id="hub-create-next-month-btn"
               onClick={onOpenNewMonthModal}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer w-full sm:w-auto"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>Crear Lista del Siguiente Mes</span>
@@ -154,7 +154,7 @@ export const MonthlyListsHubView: React.FC<MonthlyListsHubViewProps> = ({
             <button
               id="hub-invite-family-btn"
               onClick={() => onOpenInviteModal(activeList || undefined)}
-              className="flex items-center gap-1.5 px-4 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer w-full sm:w-auto"
             >
               <Users className="w-4 h-4 text-stone-600" />
               <span>Invitar a Familiar</span>
