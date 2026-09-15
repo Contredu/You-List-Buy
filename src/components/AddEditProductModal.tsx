@@ -21,9 +21,9 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
   const [currentStock, setCurrentStock] = useState("1");
   const [minStock, setMinStock] = useState("2");
   const [idealStock, setIdealStock] = useState("4");
-  const [currentPrice, setCurrentPrice] = useState("2.50");
+  const [currentPrice, setCurrentPrice] = useState("0.00");
   const [brand, setBrand] = useState("");
-  const [favoriteStore, setFavoriteStore] = useState("Mercadona");
+  const [favoriteStore, setFavoriteStore] = useState("Carrefour");
   const [notes, setNotes] = useState("");
 
   const categories: Category[] = [
@@ -69,9 +69,9 @@ export const AddEditProductModal: React.FC<AddEditProductModalProps> = ({
       setCurrentStock("1");
       setMinStock("2");
       setIdealStock("4");
-      setCurrentPrice("2.50");
+      setCurrentPrice("0.00");
       setBrand("");
-      setFavoriteStore("Mercadona");
+      setFavoriteStore("Carrefour");
       setNotes("");
     }
   }, [productToEdit, isOpen]);
